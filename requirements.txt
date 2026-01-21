@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pydantic
+playwright
+playwright-stealth
+pandas
+openpyxl
+redis
+celery
+python-dotenv
+httpx
