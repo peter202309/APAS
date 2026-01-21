@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+.env
+
+# Node
+node_modules/
+dist/
+.eslintcache
+
+# Project Specific
+data/logs/*.png
+data/logs/*.jpg
+*.csv
+.DS_Store
