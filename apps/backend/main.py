@@ -10,6 +10,9 @@ import uvicorn
 from .schemas import ScraperTask, ScraperResult, LogEntry
 from core.scraper.ita_engine import ITAEngine
 
+from fastapi.staticfiles import StaticFiles
+import os
+
 app = FastAPI(title="APAS API - Aviation Price Analysis System")
 
 # 允许跨域访问
@@ -125,6 +128,16 @@ async def run_scrape_process(task: ScraperTask):
     # 如果所有重试都失败
     add_log(f"ALL {max_retries} attempts failed. Scraper has safely timed out to prevent system hang.", "ERROR")
     add_log("SYSTEM NOTIFICATION: Automatic price monitoring will continue in the next scheduled cycle. No manual action required.", "INFO")
+
+# Serve static files (React frontend)
+# 获取 frontend/dist 的绝对路径
+current_dir = os.path.dirname(os.path.abspath(__file__))
+frontend_dist = os.path.join(os.path.dirname(current_dir), "frontend", "dist")
+
+if os.path.exists(frontend_dist):
+    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="static")
+else:
+    print(f"Warning: Static files directory not found at {frontend_dist}")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8080)

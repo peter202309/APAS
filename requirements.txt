@@ -9,3 +9,4 @@ redis
 celery
 python-dotenv
 httpx
+a2wsgi
