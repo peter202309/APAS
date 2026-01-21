@@ -86,20 +86,24 @@ export default function TaskForm({ onSubmit }) {
             </div>
 
             <div className="grid grid-cols-3 gap-4">
-                <InputField
-                    label="Nights"
-                    icon={Calendar}
-                    type="number"
-                    value={task.nights}
-                    onChange={(e) => setTask({ ...task, nights: parseInt(e.target.value) || 0 })}
-                />
-                <InputField
-                    label="Adults"
-                    icon={Users}
-                    type="number"
-                    value={task.adults}
-                    onChange={(e) => setTask({ ...task, adults: parseInt(e.target.value) || 1 })}
-                />
+                {task.trip_type === 'round_trip' && (
+                    <InputField
+                        label="Nights"
+                        icon={Calendar}
+                        type="number"
+                        value={task.nights}
+                        onChange={(e) => setTask({ ...task, nights: parseInt(e.target.value) || 0 })}
+                    />
+                )}
+                <div className={task.trip_type === 'one_way' ? 'col-span-1' : ''}>
+                    <InputField
+                        label="Adults"
+                        icon={Users}
+                        type="number"
+                        value={task.adults}
+                        onChange={(e) => setTask({ ...task, adults: parseInt(e.target.value) || 1 })}
+                    />
+                </div>
                 <SelectField
                     label="Cabin"
                     icon={DollarSign}

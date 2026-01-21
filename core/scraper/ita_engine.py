@@ -43,7 +43,19 @@ class ITAEngine:
                 except:
                     pass
 
-                # 2. 填写始发地和目的地 (v5 鲁棒选择器)
+                # 2. 切换行程类型 (One Way / Round Trip)
+                logger.info(f"Setting trip type to: {task.trip_type}")
+                try:
+                    target_tab_text = "One Way" if task.trip_type == "one_way" else "Round Trip"
+                    # 这里使用文本选择器寻找 tab
+                    type_btn = await page.query_selector(f'div[role="tab"]:has-text("{target_tab_text}"), button:has-text("{target_tab_text}")')
+                    if type_btn:
+                        await type_btn.click()
+                        await asyncio.sleep(1)
+                except Exception as e:
+                    logger.warning(f"Failed to switch trip type tab: {e}")
+
+                # 3. 填写始发地和目的地 (v5 鲁棒选择器)
                 logger.info(f"Filling Origin: {task.origin} and Destination: {task.destination}")
                 
                 # 始发地
@@ -58,7 +70,7 @@ class ITAEngine:
                 await asyncio.sleep(1)
                 await page.keyboard.press("Enter")
 
-                # 3. 选择“价格日历”模式
+                # 4. 选择“价格日历”模式
                 logger.info("Switching to 'See calendar of lowest fares' mode...")
                 try:
                     # 点击模式下拉框 (通常显示 "Search exact date")
@@ -70,8 +82,8 @@ class ITAEngine:
                 except Exception as e:
                     logger.warning(f"Failed to switch to calendar mode: {e}")
 
-                # 4. 填写日期与时长 (仅在日历模式下)
-                logger.info(f"Filling date: {task.start_date} and duration: {task.nights}")
+                # 5. 填写日期与时长
+                logger.info(f"Filling date: {task.start_date}")
                 
                 # 开始日期
                 date_box = await page.wait_for_selector('mat-form-field:has-text("Start Date") input', timeout=10000)
@@ -80,11 +92,13 @@ class ITAEngine:
                 await page.keyboard.press("Escape") # 填完之后强制 Escape，确保日期选择器窗口消失
                 await asyncio.sleep(0.5)
                 
-                # 停留天数 (Nights)
-                duration_box = await page.wait_for_selector('mat-form-field:has-text("Duration (nights)") input', timeout=10000)
-                await duration_box.fill(str(task.nights))
-                await asyncio.sleep(0.5)
-                await page.keyboard.press("Escape") # 再次确保所有 Material 弹窗关闭
+                # 仅在 Round Trip 模式下填写 Nights
+                if task.trip_type == "round_trip":
+                    logger.info(f"Filling duration: {task.nights}")
+                    duration_box = await page.wait_for_selector('mat-form-field:has-text("Duration (nights)") input', timeout=10000)
+                    await duration_box.fill(str(task.nights))
+                    await asyncio.sleep(0.5)
+                    await page.keyboard.press("Escape") # 再次确保所有 Material 弹窗关闭
 
                 # 5. 处理 Routing Codes (高级控制)
                 if task.routing_codes:
