@@ -10,7 +10,7 @@ env/
 
 # Node
 node_modules/
-dist/
+# dist/
 .eslintcache
 
 # Project Specific
