@@ -38,3 +38,27 @@
 ## 🛠️ 当前状态日志
 - **2026-01-21**: 确认实施方案，创建实施计划。正式启动 Task 1。
 - **2026-01-21**: Task 1 完成。成功探索 ITA Matrix 交互逻辑（Click->ESC->Type），并验证了日历数据提取能力。开始 Task 2。
+- **2026-01-22**: 爬虫稳定性优化 - 实现 CDP 持久化连接
+  - 创建 `start_chrome_debug.bat` 用于启动调试模式 Chrome（端口 9223）
+  - 修改 `ita_engine.py` 从 `launch_persistent_context` 改为 `connect_over_cdp`
+  - 优化表单填写顺序：Routing Codes 移至 Origin/Destination 之后
+  - 实现 Tab Navigation 策略（Extension Codes → Tab → Routing Codes）
+  - 添加 Human-in-the-Loop 机制：自动失败时等待 15 秒人工介入
+- **2026-01-23**: 待优化 - 减少 Routing Codes 自动重试次数，更快触发人工介入
+
+## 🔧 关键技术决策
+### 浏览器连接策略
+- **问题**：临时浏览器窗口无法保存登录状态和 UI 偏好设置
+- **解决**：使用 CDP (Chrome DevTools Protocol) 连接到用户预先启动的 Chrome 实例
+- **优势**：保留登录状态、记住 "Advanced Controls" 展开状态、更稳定的自动化
+
+### Routing Codes 输入策略演进
+1. ~~直接选择器定位~~ → 滚动不稳定
+2. ~~可见性检测 + 点击~~ → 仍有定位问题
+3. **Tab Navigation** → 点击 Extension Codes 后按 Tab 键聚焦
+4. **Human-in-the-Loop** → 失败时请求人工协助
+
+## 📝 下次会话待办
+- [ ] 减少 Routing Codes 自动尝试时间（15s → 3-5s）
+- [ ] 测试完整的单程/往返流程稳定性
+- [ ] 优化数据提取的月份过滤逻辑
