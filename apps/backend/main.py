@@ -171,8 +171,15 @@ async def run_scrape_process(task: ScraperTask):
 current_dir = os.path.dirname(os.path.abspath(__file__))
 frontend_dist = os.path.join(os.path.dirname(current_dir), "frontend", "dist")
 
+class SPAStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope):
+        # Prevent "assert scope['type'] == 'http'" error for websocket connections
+        if scope["type"] != "http":
+            return Response("Not found", status_code=404)
+        return await super().get_response(path, scope)
+
 if os.path.exists(frontend_dist):
-    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="static")
+    app.mount("/", SPAStaticFiles(directory=frontend_dist, html=True), name="static")
 else:
     print(f"Warning: Static files directory not found at {frontend_dist}")
 

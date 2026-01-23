@@ -13,8 +13,10 @@ class ScraperTask(BaseModel):
     origin: str
     destination: str
     start_date: str
-    routing_codes: Optional[str] = None  # e.g., "C:MU+"
-    extension_codes: Optional[str] = None
+    routing_codes: Optional[str] = None  # Outbound Routing
+    extension_codes: Optional[str] = None # Outbound Extension
+    return_routing_codes: Optional[str] = None # Return Routing
+    return_extension_codes: Optional[str] = None # Return Extension
     nights: int = 7  # Duration for calendar view
     stops: str = "No limit"  # "Nonstop only", "Up to 1 stop", etc.
     cabin: str = "Cheapest available"

@@ -128,38 +128,40 @@ class ITAEngine:
 
                 # 3.5. 处理 Routing Codes (Simplified - No Toggle)
                 # Since user has manually expanded controls in persistent browser, they stay visible
-                if task.routing_codes:
-                    logger.info(f"Filling Routing Codes: {task.routing_codes}")
+                # 3.5. Advanced Routing & Extension Codes
+                logger.info("Filling Advanced Routing & Extension Codes...")
+                
+                async def fill_advanced_field(label, index, value):
+                    if not value: return
                     try:
-                        # Strategy: focus() instead of click() to avoid scrolling
-                        routing_box = await page.wait_for_selector(
-                            'mat-form-field:has-text("Routing Codes") input', 
-                            timeout=3000
-                        )
-                        await routing_box.focus()  # No scrolling, just focus
-                        await asyncio.sleep(0.2)
-                        await routing_box.fill(task.routing_codes)
-                        await asyncio.sleep(0.3)
-                        await page.keyboard.press("Escape")
-                        logger.info("✓ Routing Codes filled successfully")
-                    except Exception as rc_err:
-                        # Fallback: JavaScript direct assignment (no UI interaction)
-                        logger.warning(f"Focus+fill failed, trying JS fallback...")
-                        try:
-                            await page.evaluate("""
-                                (code) => {
-                                    const input = document.querySelector('mat-form-field input[placeholder*="Routing"], mat-form-field input[aria-label*="Routing"]');
-                                    if (input) {
-                                        input.value = code;
-                                        input.dispatchEvent(new Event('input', { bubbles: true }));
-                                        input.dispatchEvent(new Event('change', { bubbles: true }));
-                                        console.log('[SCRAPER] Routing Codes set via JS:', code);
-                                    }
-                                }
-                            """, task.routing_codes)
-                            logger.info("✓ Routing Codes filled via JavaScript")
-                        except:
-                            logger.error("❌ Routing Codes skipped - all methods failed")
+                        # Find all matching fields
+                        # Note: "Routing Codes" and "Extension Codes" fields appear multiple times in Round Trip
+                        # We use nth(index) to target Outbound (0) vs Return (1)
+                        field = page.locator(f'mat-form-field:has-text("{label}") input').nth(index)
+                        
+                        # Check availability
+                        if await field.is_visible():
+                            await field.focus()
+                            await asyncio.sleep(0.1)
+                            await field.fill(value)
+                            await asyncio.sleep(0.1)
+                            logger.info(f"✓ Filled {label} [{index}]: {value}")
+                        else:
+                            logger.warning(f"Field {label} [{index}] not visible")
+                    except Exception as e:
+                        logger.warning(f"Failed to fill {label} [{index}]: {e}")
+
+                # Outbound (Index 0)
+                await fill_advanced_field("Routing Codes", 0, task.routing_codes)
+                await fill_advanced_field("Extension Codes", 0, task.extension_codes)
+
+                # Return (Index 1) - Only if Round Trip
+                if task.trip_type == "round_trip":
+                    await fill_advanced_field("Routing Codes", 1, task.return_routing_codes)
+                    await fill_advanced_field("Extension Codes", 1, task.return_extension_codes)
+                
+                await page.keyboard.press("Escape")
+
 
                 # 3.6 Advanced Controls: Currency, Stops, Extra Stops
                 logger.info("Setting Advanced Controls...")
