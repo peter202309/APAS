@@ -58,72 +58,28 @@ async def export_csv():
     if not db_results:
         return {"error": "No data available to export"}
     
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(['Search_Timestamp', 'Origin', 'Destination', 'Flight_Full_Date', 'Price', 'Is_Cheapest'])
+    from .processor import DataProcessor
+    import tempfile
     
-    import re
-    def format_flight_date(start_date_str, date_info_str):
+    # Create valid temporary file path
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp:
+        output_path = tmp.name
+        
+    # Use the centralized processor logic
+    DataProcessor.prices_to_csv(db_results, output_path)
+    
+    # Stream the file content back
+    def iter_file():
+        with open(output_path, 'rb') as f:
+            yield from f
+        # Clean up
         try:
-            # New Logic: date_info_str might be "January 28"
-            import calendar
-            months_map = {m: i for i, m in enumerate(calendar.month_name) if m}
-            
-            # Helper to get year from start_date
-            parts_sd = start_date_str.split('/')
-            year = parts_sd[2] 
-            
-            # Check if date_info_str has Month Name
-            matched_month = None
-            day_val = date_info_str
-            
-            for m_name in months_map.keys():
-                if m_name in date_info_str:
-                    matched_month = m_name
-                    day_val = date_info_str.replace(m_name, "").strip()
-                    break
-            
-            if matched_month:
-                m_idx = months_map[matched_month] - 1
-                # If scraped month is BEFORE start month (and barely), might be next year? 
-                # For now assume same year as start_date unless explicit.
-            else:
-                m_idx = int(parts_sd[0]) - 1
+            os.remove(output_path)
+        except:
+            pass
 
-            months_abbr = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
-            month_mmm = months_abbr[m_idx]
-            day_dd = str(day_val).zfill(2)
-            
-            return f"{day_dd}{month_mmm}{year}"[-7:] # Ensure we use 2-digit year from end
-        except Exception as e:
-            return f"{date_info_str}ERR"
-
-    # Save JSON for debugging
-    import json
-    import os
-    json_path = "data/results/latest_result.json"
-    os.makedirs(os.path.dirname(json_path), exist_ok=True)
-    with open(json_path, 'w') as f:
-        # Convert Pydantic models to dict
-        json.dump([res.dict() for res in db_results], f, indent=2)
-    logger.info(f"Saved JSON debug file to: {json_path}")
-
-    for res in db_results:
-        for p in res.prices:
-            # Use the scraper's formatted date directly (e.g. "06FEB26")
-            full_date = p.date 
-            writer.writerow([
-                res.timestamp,
-                res.task.origin,
-                res.task.destination,
-                full_date,
-                p.price,
-                p.is_cheapest
-            ])
-    
-    output.seek(0)
     return StreamingResponse(
-        output,
+        iter_file(),
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=apas_report_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"}
     )

@@ -10,6 +10,9 @@ class DataProcessor:
         for res in results:
             for p in res.prices:
                 flat_data.append({
+                    "Trip_Type": res.task.trip_type,
+                    "Start_Date": res.task.start_date,
+                    "Duration": res.task.nights if res.task.trip_type == "round_trip" else "",
                     "Search_Date": res.timestamp[:10],
                     "Origin": res.task.origin,
                     "Destination": res.task.destination,
