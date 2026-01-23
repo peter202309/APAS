@@ -16,5 +16,14 @@ export const scraperService = {
     async getLogs() {
         const response = await axios.get(`${API_BASE}/logs`);
         return response.data;
+    },
+
+    async uploadBatch(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await axios.post(`${API_BASE}/tasks/batch-upload`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        return response.data;
     }
 };

@@ -8,7 +8,9 @@ import {
   TrendingUp,
   AlertCircle,
   Loader2,
-  CheckCircle2
+  CheckCircle2,
+  Upload,
+  FileText
 } from 'lucide-react';
 import TaskForm from './components/TaskForm';
 import { scraperService } from './services/api';
@@ -17,8 +19,8 @@ const SidebarItem = ({ icon: Icon, label, active, onClick }) => (
   <div
     onClick={onClick}
     className={`flex items-center space-x-3 p-3 rounded-xl cursor-pointer transition-all duration-200 ${active
-        ? 'bg-blue-600 text-white shadow-lg shadow-blue-200'
-        : 'hover:bg-slate-100 text-slate-500 hover:text-slate-900'
+      ? 'bg-blue-600 text-white shadow-lg shadow-blue-200'
+      : 'hover:bg-slate-100 text-slate-500 hover:text-slate-900'
       }`}
   >
     <Icon size={20} className={active ? 'text-white' : 'text-slate-400'} />
@@ -65,6 +67,22 @@ export default function App() {
         ? JSON.stringify(err.response.data.detail)
         : err.message;
       alert(`Launch Failed: ${errMsg}`);
+    } finally {
+      setIsScraping(false);
+    }
+  };
+
+  const handleBatchUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setIsScraping(true);
+    try {
+      const res = await scraperService.uploadBatch(file);
+      alert(`Batch started! ID: ${res.batch_id} (${res.task_count} tasks)`);
+      setActiveTab('dashboard');
+    } catch (err) {
+      alert(`Upload Failed: ${err.message}`);
     } finally {
       setIsScraping(false);
     }
@@ -254,8 +272,8 @@ export default function App() {
           </div>
         )}
         {activeTab === 'search' && (
-          <div className="max-w-2xl mx-auto">
-            <div className="glass-card p-8 shadow-2xl relative overflow-hidden border-none text-left">
+          <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 text-left">
+            <div className="md:col-span-2 glass-card p-8 shadow-2xl relative overflow-hidden border-none lg:p-10">
               <div className="absolute top-0 right-0 w-32 h-32 gradient-bg opacity-5 -mr-16 -mt-16 rounded-full" />
               <h2 className="text-2xl font-bold text-slate-800 mb-8 flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-primary-50 flex items-center justify-center text-primary-600">
@@ -264,6 +282,52 @@ export default function App() {
                 Configure Research Task
               </h2>
               <TaskForm onSubmit={handleLaunchTask} />
+            </div>
+
+            <div className="space-y-6">
+              <div className="glass-card p-8 border-dashed border-2 border-slate-200 bg-slate-50/50">
+                <div className="w-12 h-12 rounded-2xl bg-white shadow-sm flex items-center justify-center text-primary-600 mb-6">
+                  <Upload size={24} />
+                </div>
+                <h3 className="text-lg font-bold text-slate-800 mb-2">Batch CSV Upload</h3>
+                <p className="text-sm text-slate-500 mb-6">Upload a CSV file for multiple automated searches. System will process rows sequentially.</p>
+
+                <label className="block w-full">
+                  <span className="sr-only">Choose CSV file</span>
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleBatchUpload}
+                    className="block w-full text-sm text-slate-500
+                      file:mr-4 file:py-2.5 file:px-4
+                      file:rounded-xl file:border-0
+                      file:text-sm file:font-bold
+                      file:bg-primary-600 file:text-white
+                      hover:file:bg-primary-700
+                      cursor-pointer"
+                  />
+                </label>
+
+                <div className="mt-8 pt-6 border-t border-slate-200">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Required Headers</p>
+                  <div className="flex flex-wrap gap-2">
+                    {['origin', 'destination', 'start_date'].map(h => (
+                      <span key={h} className="px-2 py-1 bg-white border border-slate-200 rounded text-[10px] font-mono text-slate-600">{h}</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="glass-card p-6 bg-slate-800 text-white border-none">
+                <div className="flex items-center gap-3 mb-4">
+                  <FileText className="text-blue-400" size={20} />
+                  <h4 className="font-bold">Template Info</h4>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Date format: <b>MM/DD/YYYY</b><br />
+                  Optional headers: trip_type, routing_codes, cabin, nights.
+                </p>
+              </div>
             </div>
           </div>
         )}

@@ -32,9 +32,11 @@ class ScraperResult(BaseModel):
     timestamp: str
     status: str = "success"
     message: Optional[str] = None
+    batch_id: Optional[str] = None
 
 class LogEntry(BaseModel):
     timestamp: str
     level: str
     message: str
     task_id: Optional[str] = None
+    batch_id: Optional[str] = None

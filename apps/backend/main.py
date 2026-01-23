@@ -1,8 +1,10 @@
 import asyncio
 import io
 import csv
+import uuid
+import pandas as pd
 from datetime import datetime
-from fastapi import FastAPI, BackgroundTasks, Response
+from fastapi import FastAPI, BackgroundTasks, Response, UploadFile, File
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
@@ -42,6 +44,36 @@ async def root():
 async def create_scrape_task(task: ScraperTask, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_scrape_process, task)
     return {"status": "accepted", "task": task}
+
+@app.post("/tasks/batch-upload")
+async def batch_upload(file: UploadFile = File(...), background_tasks: BackgroundTasks = BackgroundTasks()):
+    content = await file.read()
+    df = pd.read_csv(io.BytesIO(content))
+    
+    # Generate batch ID
+    batch_id = str(uuid.uuid4())[:8]
+    tasks = []
+    
+    for _, row in df.iterrows():
+        try:
+            # Map CSV columns to ScraperTask (flexibility for headers)
+            task = ScraperTask(
+                trip_type=row.get('trip_type', 'round_trip'),
+                origin=row.get('origin'),
+                destination=row.get('destination'),
+                start_date=str(row.get('start_date')),
+                routing_codes=row.get('routing_codes') if pd.notna(row.get('routing_codes')) else None,
+                extension_codes=row.get('extension_codes') if pd.notna(row.get('extension_codes')) else None,
+                nights=int(row.get('nights', 7)) if pd.notna(row.get('nights')) else 7,
+                stops=row.get('stops', 'No limit'),
+                cabin=row.get('cabin', 'Cheapest available')
+            )
+            tasks.append(task)
+        except Exception as e:
+            logger.error(f"Failed to parse row: {e}")
+
+    background_tasks.add_task(run_batch_process, tasks, batch_id)
+    return {"status": "batch_started", "batch_id": batch_id, "task_count": len(tasks)}
 
 @app.get("/results", response_model=List[ScraperResult])
 async def get_results():
@@ -84,7 +116,52 @@ async def export_csv():
         headers={"Content-Disposition": f"attachment; filename=apas_report_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"}
     )
 
+async def run_batch_process(tasks: List[ScraperTask], batch_id: str):
+    def add_batch_log(msg, level="INFO"):
+        db_logs.append(LogEntry(
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            level=level,
+            message=f"[Batch {batch_id}] {msg}",
+            batch_id=batch_id
+        ))
+
+    add_batch_log(f"Starting batch process for {len(tasks)} tasks.")
+    
+    batch_results = []
+    for i, task in enumerate(tasks):
+        add_batch_log(f"Working on task {i+1}/{len(tasks)}: {task.origin}->{task.destination}")
+        
+        # Individual task with retry and isolation
+        try:
+            # Re-use the existing retry logic but scoped to this task
+            engine = ITAEngine(headless=False)
+            result = await engine.run_task(task)
+            result.batch_id = batch_id
+            
+            if result.status == "success":
+                db_results.append(result)
+                batch_results.append(result)
+                add_batch_log(f"Task {i+1} success: {len(result.prices)} prices.", "SUCCESS")
+                
+                # Intermediate save: Save current results to a dedicated batch CSV
+                save_intermediate_batch(batch_id, batch_results)
+            else:
+                add_batch_log(f"Task {i+1} failed: {result.message}", "WARNING")
+        except Exception as e:
+            add_batch_log(f"Task {i+1} system crash: {str(e)}", "ERROR")
+            # Continue to next task
+            continue
+    
+    add_batch_log(f"Batch {batch_id} fully completed. Final count: {len(batch_results)} success rows.", "SUCCESS")
+
+def save_intermediate_batch(batch_id, results):
+    from .processor import DataProcessor
+    os.makedirs("data/results/batches", exist_ok=True)
+    path = f"data/results/batches/batch_{batch_id}_live.csv"
+    DataProcessor.prices_to_csv(results, path)
+
 async def run_scrape_process(task: ScraperTask):
+# ... existing code ...
     max_retries = 3
     retry_count = 0
     
