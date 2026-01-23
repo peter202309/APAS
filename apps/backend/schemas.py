@@ -21,6 +21,7 @@ class ScraperTask(BaseModel):
     currency: Optional[str] = None
     sales_city: Optional[str] = None
     adults: int = 1
+    extra_stops: str = "No limit"  # "No limit", "No extra stops", "Up to 1 extra stop", "Up to 2 extra stops"
 
 class ScraperResult(BaseModel):
     task: ScraperTask

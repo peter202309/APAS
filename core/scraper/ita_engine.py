@@ -161,6 +161,54 @@ class ITAEngine:
                         except:
                             logger.error("❌ Routing Codes skipped - all methods failed")
 
+                # 3.6 Advanced Controls: Currency, Stops, Extra Stops
+                logger.info("Setting Advanced Controls...")
+
+                # Currency -> Always CAD
+                try:
+                    # Use specific text to find the currency field
+                    curr_field = await page.wait_for_selector('mat-form-field:has-text("Currency") input', timeout=5000)
+                    await curr_field.click()
+                    # Clear existing text
+                    await page.keyboard.press("Control+a")
+                    await page.keyboard.press("Backspace")
+                    await asyncio.sleep(0.5)
+                    await curr_field.type("CAD", delay=100)
+                    await asyncio.sleep(1.5) # Wait for dropdown population
+                    # Select the option explicitly
+                    await page.click('mat-option:has-text("Canadian Dollar")', timeout=5000)
+                    logger.info("✓ Currency set to CAD")
+                except Exception as e:
+                    logger.warning(f"Failed to set Currency (Non-critical): {e}")
+
+                # Stops
+                if task.stops:
+                    try:
+                        logger.info(f"Setting Stops: {task.stops}")
+                        # Use a more specific locator to avoid confusion with "Extra stops"
+                        # We look for the form field that has "Stops" but NOT "Extra"
+                        stops_field = page.locator('mat-form-field').filter(has_text="Stops").filter(has_not_text="Extra").first
+                        if await stops_field.is_visible():
+                            await stops_field.click()
+                            await asyncio.sleep(0.5)
+                            # Select option by text (fuzzy match ok for options)
+                            await page.click(f'mat-option:has-text("{task.stops}")', timeout=2000)
+                            logger.info(f"✓ Stops set to: {task.stops}")
+                    except Exception as e:
+                        logger.warning(f"Failed to set Stops: {e}")
+
+                # Extra Stops
+                if hasattr(task, 'extra_stops') and task.extra_stops:
+                    try:
+                        logger.info(f"Setting Extra Stops: {task.extra_stops}")
+                        ex_stops_field = await page.wait_for_selector('mat-form-field:has-text("Extra stops")', timeout=5000)
+                        await ex_stops_field.click()
+                        await asyncio.sleep(0.5)
+                        await page.click(f'mat-option:has-text("{task.extra_stops}")', timeout=2000)
+                        logger.info(f"✓ Extra Stops set to: {task.extra_stops}")
+                    except Exception as e:
+                        logger.warning(f"Failed to set Extra Stops: {e}")
+
                 # 4. 选择“价格日历”模式
                 logger.info("Switching to 'See calendar of lowest fares' mode...")
                 try:
@@ -390,11 +438,13 @@ class ITAEngine:
                             continue
 
                         # 移除货币符号和逗号
-                        numeric_price = float(d['price'].replace('CA$', '').replace('$', '').replace(',', '').strip())
+                        # Handle varied currency symbols
+                        clean_price = d['price'].replace('CA$', '').replace('$', '').replace('CAD', '').replace(',', '').strip()
+                        numeric_price = float(clean_price)
                         final_prices.append(FlightPrice(
                             date=d['date'],
                             price=numeric_price,
-                            currency="USD", # 暂时默认
+                            currency="CAD", # Forced to CAD per user requirement
                             is_cheapest=d['is_cheapest']
                         ))
                     except Exception as parse_err:
