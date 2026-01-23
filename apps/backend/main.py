@@ -64,9 +64,13 @@ async def batch_upload(file: UploadFile = File(...), background_tasks: Backgroun
                 start_date=str(row.get('start_date')),
                 routing_codes=row.get('routing_codes') if pd.notna(row.get('routing_codes')) else None,
                 extension_codes=row.get('extension_codes') if pd.notna(row.get('extension_codes')) else None,
+                return_routing_codes=row.get('return_routing_codes') if pd.notna(row.get('return_routing_codes')) else None,
+                return_extension_codes=row.get('return_extension_codes') if pd.notna(row.get('return_extension_codes')) else None,
                 nights=int(row.get('nights', 7)) if pd.notna(row.get('nights')) else 7,
                 stops=row.get('stops', 'No limit'),
-                cabin=row.get('cabin', 'Cheapest available')
+                extra_stops=row.get('extra_stops', 'No limit'),
+                sales_city=row.get('sales_city') if pd.notna(row.get('sales_city')) else None,
+                currency=row.get('currency') if pd.notna(row.get('currency')) else 'CAD'
             )
             tasks.append(task)
         except Exception as e:
