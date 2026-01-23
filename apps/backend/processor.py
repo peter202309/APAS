@@ -1,4 +1,5 @@
 import pandas as pd
+import logging
 from typing import List
 from .schemas import ScraperResult, FlightPrice
 
@@ -14,7 +15,7 @@ class DataProcessor:
                     "Destination": res.task.destination,
                     "Airline_Filter": res.task.routing_codes,
                     "Month": res.month,
-                    "Flight_Date": f"{res.month} {p.date}",
+                    "Flight_Full_Date": p.date,
                     "Price": p.price,
                     "Currency": p.currency,
                     "Is_Lowest": p.is_cheapest
@@ -22,6 +23,19 @@ class DataProcessor:
         
         df = pd.DataFrame(flat_data)
         df.to_csv(output_path, index=False, encoding='utf-8-sig')
+        
+        # VERIFICATION: Read back the file immediately to prove content
+        try:
+            with open(output_path, 'r', encoding='utf-8-sig') as f:
+                logger = logging.getLogger(__name__)
+                logger.info(f"--- CSV CONTENT VERIFICATION ({output_path}) ---")
+                for _ in range(3):
+                    line = f.readline().strip()
+                    if line: logger.info(f"CSV Line: {line}")
+                logger.info("------------------------------------------------")
+        except:
+            pass
+
         return output_path
 
     @staticmethod

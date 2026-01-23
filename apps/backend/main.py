@@ -10,6 +10,12 @@ import uvicorn
 from .schemas import ScraperTask, ScraperResult, LogEntry
 from core.scraper.ita_engine import ITAEngine
 
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 from fastapi.staticfiles import StaticFiles
 import os
 
@@ -94,7 +100,9 @@ async def export_csv():
 
     # Save JSON for debugging
     import json
+    import os
     json_path = "data/results/latest_result.json"
+    os.makedirs(os.path.dirname(json_path), exist_ok=True)
     with open(json_path, 'w') as f:
         # Convert Pydantic models to dict
         json.dump([res.dict() for res in db_results], f, indent=2)
