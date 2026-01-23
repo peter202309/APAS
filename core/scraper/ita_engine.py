@@ -263,7 +263,7 @@ class ITAEngine:
                         
                         if (!dateEl && !priceEl) {
                             // Maybe the cell itself contains the data
-                            const cellText = cell.innerText.trim();
+                            const cellText = cell.innerText?.trim() || '';
                             if (cellText.includes('$') && cellText.match(/\\d+/)) {
                                 console.log(`[SCRAPER] Cell ${idx} has inline data: ${cellText}`);
                             }
@@ -278,15 +278,52 @@ class ITAEngine:
                         
                         if (!dateText || !priceText || !priceText.includes('$')) return;
                         
-                        // Month detection
+                        
+                        // Month detection with multiple fallbacks
                         let monthName = "Unknown";
-                        const parentMonth = cell.closest('[class*="month"], [class*="calendar"]');
+                        
+                        // Strategy 1: Look in closest parent container
+                        const parentMonth = cell.closest('[class*="month"], [class*="calendar"], section, article');
                         if (parentMonth) {
-                            const header = parentMonth.querySelector('[class*="month-label"], [class*="month-name"], h2, h3');
-                            if (header) monthName = header.innerText.trim();
+                            const header = parentMonth.querySelector('[class*="month"], [class*="label"], h1, h2, h3, h4, strong');
+                            if (header && header.innerText) {
+                                const text = header.innerText?.trim();
+                                if (text && text.length < 50) {  // Reasonable header length
+                                    monthName = text;
+                                    console.log('[SCRAPER] Found month via parent:', monthName);
+                                }
+                            }
                         }
                         
-                        const fullDate = `${monthName.split(' ')[0]} ${dateText}`;
+                        // Strategy 2: If still Unknown, look for ANY visible month header on page
+                        if (monthName === "Unknown") {
+                            const allHeaders = document.querySelectorAll('h1, h2, h3, h4, [class*="month"], [class*="calendar-header"]');
+                            for (const h of allHeaders) {
+                                const text = h.innerText?.trim() || '';
+                                // Check if it looks like a month (contains Chinese month characters or English month names)
+                                if (text.match(/[一二三四五六七八九十]{1,2}月|January|February|March|April|May|June|July|August|September|October|November|December/)) {
+                                    monthName = text;
+                                    console.log('[SCRAPER] Found month via global search:', monthName);
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        
+                        // Handle Chinese month names (e.g., "二月" -> "February")
+                        const monthMap = {
+                            '一月': 'January', '二月': 'February', '三月': 'March',
+                            '四月': 'April', '五月': 'May', '六月': 'June',
+                            '七月': 'July', '八月': 'August', '九月': 'September',
+                            '十月': 'October', '十一月': 'November', '十二月': 'December'
+                        };
+                        
+                        let finalMonthName = monthName.split(' ')[0];
+                        if (monthMap[finalMonthName]) {
+                            finalMonthName = monthMap[finalMonthName];
+                        }
+                        
+                        const fullDate = `${finalMonthName} ${dateText}`;
                         const isCheapest = priceEl.classList.contains('is-min') || 
                                          cell.classList.contains('is-min') ||
                                          priceEl.classList.contains('cheapest');
@@ -329,12 +366,16 @@ class ITAEngine:
 
                 # 将字符串价格转换为浮点数
                 final_prices = []
+                logger.info(f"Filtering for target month: '{target_month_name}'")
+                logger.info(f"Raw extracted data sample: {result_data['days'][:3] if len(result_data['days']) > 0 else 'None'}")
+                
                 for d in result_data['days']:
                     try:
                         # Filter: Ensure the scraped date belongs to the requested month
                         # d['date'] is formatted as "Month Day" (e.g., "February 01")
                         if target_month_name and target_month_name not in d['date']:
-                             continue
+                            logger.debug(f"Filtered out: {d['date']} (not matching {target_month_name})")
+                            continue
 
                         # 移除货币符号和逗号
                         numeric_price = float(d['price'].replace('CA$', '').replace('$', '').replace(',', '').strip())
