@@ -310,20 +310,31 @@ class ITAEngine:
                         }
                         
                         
-                        // Handle Chinese month names (e.g., "二月" -> "February")
-                        const monthMap = {
-                            '一月': 'January', '二月': 'February', '三月': 'March',
-                            '四月': 'April', '五月': 'May', '六月': 'June',
-                            '七月': 'July', '八月': 'August', '九月': 'September',
-                            '十月': 'October', '十一月': 'November', '十二月': 'December'
+                        
+                        // Month abbreviation map for ddmmmyy format (supports both Chinese and English)
+                        const monthAbbrev = {
+                            '一月': 'JAN', '二月': 'FEB', '三月': 'MAR',
+                            '四月': 'APR', '五月': 'MAY', '六月': 'JUN',
+                            '七月': 'JUL', '八月': 'AUG', '九月': 'SEP',
+                            '十月': 'OCT', '十一月': 'NOV', '十二月': 'DEC',
+                            'January': 'JAN', 'February': 'FEB', 'March': 'MAR',
+                            'April': 'APR', 'May': 'MAY', 'June': 'JUN',
+                            'July': 'JUL', 'August': 'AUG', 'September': 'SEP',
+                            'October': 'OCT', 'November': 'NOV', 'December': 'DEC'
                         };
                         
-                        let finalMonthName = monthName.split(' ')[0];
-                        if (monthMap[finalMonthName]) {
-                            finalMonthName = monthMap[finalMonthName];
-                        }
+                        let monthKey = monthName.split(' ')[0];
+                        let monthCode = monthAbbrev[monthKey] || 'UNK';
                         
-                        const fullDate = `${finalMonthName} ${dateText}`;
+                        // Format: ddmmmyy (e.g., 06FEB26)
+                        const yearStr = new Date().getFullYear().toString().slice(-2);
+                        
+                        // Robust day extraction: find digits, default to "01", pad to 2 chars
+                        const dayMatch = dateText.match(/\d+/);
+                        const dayStr = dayMatch ? dayMatch[0] : "01"; 
+                        const dayPadded = dayStr.padStart(2, '0');
+                        
+                        const fullDate = `${dayPadded}${monthCode}${yearStr}`;
                         const isCheapest = priceEl.classList.contains('is-min') || 
                                          cell.classList.contains('is-min') ||
                                          priceEl.classList.contains('cheapest');
@@ -360,21 +371,22 @@ class ITAEngine:
                 # formatted_start_date is guaranteed to be "MM/DD/YYYY" by standardize_date()
                 try:
                     target_date_obj = datetime.strptime(formatted_start_date, "%m/%d/%Y")
-                    target_month_name = target_date_obj.strftime("%B") # e.g., "February"
+                    # Convert to 3-letter abbreviation for ddmmmyy format (e.g., "FEB")
+                    target_month_abbrev = target_date_obj.strftime("%b").upper()  # "FEB"
                 except:
-                    target_month_name = ""
+                    target_month_abbrev = ""
 
                 # 将字符串价格转换为浮点数
                 final_prices = []
-                logger.info(f"Filtering for target month: '{target_month_name}'")
+                logger.info(f"Filtering for target month: '{target_month_abbrev}'")
                 logger.info(f"Raw extracted data sample: {result_data['days'][:3] if len(result_data['days']) > 0 else 'None'}")
                 
                 for d in result_data['days']:
                     try:
                         # Filter: Ensure the scraped date belongs to the requested month
-                        # d['date'] is formatted as "Month Day" (e.g., "February 01")
-                        if target_month_name and target_month_name not in d['date']:
-                            logger.debug(f"Filtered out: {d['date']} (not matching {target_month_name})")
+                        # d['date'] is now formatted as "ddmmmyy" (e.g., "06FEB26")
+                        if target_month_abbrev and target_month_abbrev not in d['date']:
+                            logger.debug(f"Filtered out: {d['date']} (not matching {target_month_abbrev})")
                             continue
 
                         # 移除货币符号和逗号
@@ -385,8 +397,11 @@ class ITAEngine:
                             currency="USD", # 暂时默认
                             is_cheapest=d['is_cheapest']
                         ))
-                    except:
+                    except Exception as parse_err:
+                        logger.warning(f"Failed to parse price item {d}: {parse_err}")
                         continue
+                
+                logger.info(f"Final extracted count after filtering: {len(final_prices)}")
                 
                 # Do NOT close context/browser here if we want to keep the session alive for user
                 # just return the result

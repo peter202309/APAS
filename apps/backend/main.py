@@ -57,24 +57,53 @@ async def export_csv():
     writer.writerow(['Search_Timestamp', 'Origin', 'Destination', 'Flight_Full_Date', 'Price', 'Is_Cheapest'])
     
     import re
-    def format_flight_date(start_date_str, day_str):
+    def format_flight_date(start_date_str, date_info_str):
         try:
-            # start_date_str 格式为 "MM/DD/YYYY"
-            parts = start_date_str.split('/')
-            m_idx = int(parts[0]) - 1
-            year_yy = parts[2][-2:]
+            # New Logic: date_info_str might be "January 28"
+            import calendar
+            months_map = {m: i for i, m in enumerate(calendar.month_name) if m}
             
+            # Helper to get year from start_date
+            parts_sd = start_date_str.split('/')
+            year = parts_sd[2] 
+            
+            # Check if date_info_str has Month Name
+            matched_month = None
+            day_val = date_info_str
+            
+            for m_name in months_map.keys():
+                if m_name in date_info_str:
+                    matched_month = m_name
+                    day_val = date_info_str.replace(m_name, "").strip()
+                    break
+            
+            if matched_month:
+                m_idx = months_map[matched_month] - 1
+                # If scraped month is BEFORE start month (and barely), might be next year? 
+                # For now assume same year as start_date unless explicit.
+            else:
+                m_idx = int(parts_sd[0]) - 1
+
             months_abbr = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
             month_mmm = months_abbr[m_idx]
-            day_dd = str(day_str).zfill(2)
+            day_dd = str(day_val).zfill(2)
             
-            return f"{day_dd}{month_mmm}{year_yy}"
+            return f"{day_dd}{month_mmm}{year}"[-7:] # Ensure we use 2-digit year from end
         except Exception as e:
-            return f"{day_str}ERR"
+            return f"{date_info_str}ERR"
+
+    # Save JSON for debugging
+    import json
+    json_path = "data/results/latest_result.json"
+    with open(json_path, 'w') as f:
+        # Convert Pydantic models to dict
+        json.dump([res.dict() for res in db_results], f, indent=2)
+    logger.info(f"Saved JSON debug file to: {json_path}")
 
     for res in db_results:
         for p in res.prices:
-            full_date = format_flight_date(res.task.start_date, p.date)
+            # Use the scraper's formatted date directly (e.g. "06FEB26")
+            full_date = p.date 
             writer.writerow([
                 res.timestamp,
                 res.task.origin,
