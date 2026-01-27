@@ -371,7 +371,7 @@ class ITAEngine:
                 # 9. 提取第一个月的数据 (Enhanced with debugging)
                 logger.info("Extracting calendar data from v5 layout...")
                 
-                result_data = await page.evaluate("""
+                result_data = await page.evaluate(r"""
                 () => {
                     const extracted = [];
                     console.log('[SCRAPER] Starting extraction...');
@@ -396,7 +396,7 @@ class ITAEngine:
                         if (!dateEl && !priceEl) {
                             // Maybe the cell itself contains the data
                             const cellText = cell.innerText?.trim() || '';
-                            if (cellText.includes('$') && cellText.match(/\\d+/)) {
+                            if (cellText.includes('$') && cellText.match(/\d+/)) {
                                 console.log(`[SCRAPER] Cell ${idx} has inline data: ${cellText}`);
                             }
                             return;

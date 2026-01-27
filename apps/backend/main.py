@@ -56,7 +56,13 @@ except Exception as e:
 
 @app.get("/")
 async def root():
-    return {"message": "APAS API is running", "version": "1.0"}
+    return {"message": "APAS API is running", "version": "1.1", "ai_enabled": ai_client is not None}
+
+@app.get("/ai/models")
+async def get_ai_models():
+    if not ai_client:
+        return []
+    return ai_client.get_available_models()
 
 # Persistence Helpers
 def save_db_to_disk():
@@ -249,31 +255,28 @@ async def delete_batch(batch_id: str):
 @app.post("/ai/analyze")
 async def analyze_batch(payload: dict):
     if not ai_client:
-        return {"error": "AI module not configured (Check GOOGLE_API_KEY)"}
+        return {"error": "AI module not configured"}
     
     batch_id = payload.get("batch_id")
     origin = payload.get("origin", "UNKNOWN")
     destination = payload.get("destination", "UNKNOWN")
+    model_config = payload.get("ai_model_config")
     
     # Filter results for this batch (or general if no batch_id)
     relevant_prices = []
     if batch_id:
-        # Find results matching this batch_id
-        # Note: ScraperResult object needs to have batch_id attribute
         relevant_results = [r for r in db_results if getattr(r, 'batch_id', None) == batch_id]
         if not relevant_results:
              return {"report": "No data found for this batch to analyze."}
         
-        # Flatten prices from all tasks in batch
         for r in relevant_results:
              for p in r.prices:
                  relevant_prices.append({
                      "date": p.date,
                      "price": p.price,
-                     "airline": "MU" # Placeholder, real extraction might need airline parsing
+                     "airline": "MU"
                  })
     else:
-        # Fallback: Analyze last 100 prices globally
         for r in db_results[-5:]:
              for p in r.prices:
                  relevant_prices.append({"date": p.date, "price": p.price})
@@ -282,13 +285,15 @@ async def analyze_batch(payload: dict):
         return {"report": "No extracted price data available to analyze."}
 
     # Call LLM
-    report = ai_client.analyze_price_trend(origin, destination, relevant_prices)
+    report = ai_client.analyze_price_trend(origin, destination, relevant_prices, model_config=model_config)
     return {"report": report}
 
 @app.post("/ai/compare_files")
-async def analyze_comparison_files(files: List[UploadFile] = File(...), user_prompt: Optional[str] = Form(None)):
+async def analyze_comparison_files(files: List[UploadFile] = File(...), user_prompt: Optional[str] = Form(None), ai_model_config_json: Optional[str] = Form(None)):
     if not ai_client:
-        raise HTTPException(status_code=503, detail="AI Client not initialized (Check configuration)")
+        raise HTTPException(status_code=503, detail="AI Client not initialized")
+    
+    model_config = json.loads(ai_model_config_json) if ai_model_config_json else None
     
     comparison_data = {}
     import pandas as pd
@@ -297,21 +302,16 @@ async def analyze_comparison_files(files: List[UploadFile] = File(...), user_pro
     for file in files:
         try:
             content = await file.read()
-            # Try parsing with generic pandas
             try:
                 df = pd.read_csv(io.BytesIO(content))
             except:
-                # Fallback utf-16 if default fails
                 df = pd.read_csv(io.BytesIO(content), encoding='utf-16', sep='\t')
             
-            # Simple heuristic to find price/date columns
-            # Look for columns containing 'date' and 'price' (case insensitive)
             cols = {c.lower(): c for c in df.columns}
             date_col = next((cols[c] for c in cols if 'date' in c or 'day' in c), None)
             price_col = next((cols[c] for c in cols if 'price' in c or 'fare' in c or 'amount' in c), None)
             
             if date_col and price_col:
-                # Convert to simple list of dicts
                 file_data = []
                 for _, row in df.iterrows():
                     file_data.append({
@@ -320,7 +320,6 @@ async def analyze_comparison_files(files: List[UploadFile] = File(...), user_pro
                     })
                 comparison_data[file.filename] = file_data
             else:
-                # Fallback: assume first column is date, second is price
                 if len(df.columns) >= 2:
                      file_data = [{"date": str(row[0]), "price": str(row[1])} for i, row in df.iterrows()]
                      comparison_data[file.filename] = file_data
@@ -330,9 +329,9 @@ async def analyze_comparison_files(files: List[UploadFile] = File(...), user_pro
             continue
 
     if not comparison_data:
-         raise HTTPException(status_code=400, detail="Could not extract date/price data from uploaded files.")
+         raise HTTPException(status_code=400, detail="Could not extract data from files.")
 
-    report = ai_client.compare_airlines(comparison_data, user_prompt=user_prompt)
+    report = ai_client.compare_airlines(comparison_data, user_prompt=user_prompt, model_config=model_config)
     return {"report": report}
 
 @app.post("/ai/compare_batches")
@@ -343,7 +342,6 @@ async def compare_batches_endpoint(request: BatchComparisonRequest):
     comparison_data = {}
     
     for batch_id in request.batch_ids:
-        # Filter results for this batch
         batch_results = [r for r in db_results if getattr(r, 'batch_id', None) == str(batch_id)]
         
         if not batch_results:
@@ -355,7 +353,6 @@ async def compare_batches_endpoint(request: BatchComparisonRequest):
                  all_prices.extend([p.dict() for p in res.prices])
         
         if all_prices:
-            # Name source with ID and Route if available
             label = f"Batch {batch_id}"
             if batch_results and batch_results[0].task:
                  label += f" ({batch_results[0].task.origin}->{batch_results[0].task.destination})"
@@ -364,7 +361,7 @@ async def compare_batches_endpoint(request: BatchComparisonRequest):
     if not comparison_data:
         raise HTTPException(status_code=400, detail="No price data found for selected batches")
 
-    report = ai_client.compare_airlines(comparison_data, user_prompt=request.user_prompt)
+    report = ai_client.compare_airlines(comparison_data, user_prompt=request.user_prompt, model_config=request.ai_model_config)
     return {"report": report}
 
 @app.get("/results", response_model=List[ScraperResult])
