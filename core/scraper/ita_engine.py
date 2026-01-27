@@ -137,6 +137,20 @@ class ITAEngine:
                 # 3.5. Advanced Routing & Extension Codes
                 logger.info("Filling Advanced Routing & Extension Codes...")
                 
+                # 3.4. Ensure Advanced Controls are visible
+                try:
+                    # Look for the link/button to expand advanced controls
+                    # Common text variations: "Show advanced controls", "Advanced controls"
+                    advanced_link = page.locator('text=/Show advanced controls/i') # Case insensitive regex
+                    if await advanced_link.is_visible() and await advanced_link.is_enabled():
+                         logger.info("Clicking 'Show advanced controls'...")
+                         await advanced_link.click()
+                         await human_sleep(0.5, 1.5) # Wait for expansion
+                    else:
+                         logger.info("Advanced controls might be already visible or not found.")
+                except Exception as e:
+                     logger.warning(f"Note: Could not toggle advanced controls (might already be open): {e}")
+
                 async def fill_advanced_field(label, index, value):
                     if not value: return
                     try:

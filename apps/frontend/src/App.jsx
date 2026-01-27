@@ -11,7 +11,8 @@ import {
   CheckCircle2,
   Upload,
   FileText,
-  Sparkles
+  Sparkles,
+  Trash2
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import TaskForm from './components/TaskForm';
@@ -171,6 +172,23 @@ export default function App() {
     } else {
       if (selectedBatchIds.length >= 5) return alert("max 5 batches");
       setSelectedBatchIds(prev => [...prev, id]);
+    }
+  };
+
+  const handleDeleteBatch = async (e, batchId) => {
+    e.stopPropagation();
+    if (window.confirm(`Are you sure you want to delete Batch #${batchId}?`)) {
+      try {
+        await scraperService.deleteBatch(batchId);
+        const updatedBatches = await scraperService.getBatches();
+        setBatches(updatedBatches);
+        if (selectedBatchIds.includes(batchId)) {
+          setSelectedBatchIds(prev => prev.filter(id => id !== batchId));
+        }
+      } catch (error) {
+        console.error("Failed to delete batch:", error);
+        alert("Failed to delete batch.");
+      }
     }
   };
 
@@ -402,10 +420,19 @@ export default function App() {
                               <span className="text-[10px] text-slate-500 font-mono">{b.timestamp.split('T')[0]}</span>
                             </div>
                           </div>
-                          {selectedBatchIds.includes(b.id) ?
-                            <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold shadow-sm">✓</div> :
-                            <div className="w-5 h-5 rounded-full border border-slate-300"></div>
-                          }
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={(e) => handleDeleteBatch(e, b.id)}
+                              className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                              title="Delete Batch"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                            {selectedBatchIds.includes(b.id) ?
+                              <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold shadow-sm">✓</div> :
+                              <div className="w-5 h-5 rounded-full border border-slate-300"></div>
+                            }
+                          </div>
                         </div>
                       )) : <p className="text-xs text-slate-400 italic text-center py-4">No batch history available.</p>}
                     </div>
@@ -470,200 +497,216 @@ export default function App() {
               )}
             </div>
           </div>
-        )}
+        )
+        }
 
-        {activeTab === 'data' && (
-          <div className="space-y-6">
-            {!selectedBatch ? (
-              // Batch List View
-              <div className="glass-card p-6">
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="font-bold text-lg text-slate-800">Batch History</h3>
-                  <button
-                    onClick={handleDownloadCSV}
-                    className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-md hover:bg-primary-700 transition-all"
-                  >
-                    <Database size={16} /> Export All Results
-                  </button>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="border-b border-slate-100 text-slate-400 text-xs uppercase tracking-widest font-black">
-                        <th className="px-4 py-4">Batch ID</th>
-                        <th className="px-4 py-4">Time</th>
-                        <th className="px-4 py-4">Total Tasks</th>
-                        <th className="px-4 py-4">Status</th>
-                        <th className="px-4 py-4">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50">
-                      {batches.length > 0 ? batches.map((batch, i) => (
-                        <tr key={i} className="hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => setSelectedBatch(batch)}>
-                          <td className="px-4 py-4 font-mono text-xs font-bold text-primary-600">
-                            {batch.id}
-                          </td>
-                          <td className="px-4 py-4 text-sm font-medium text-slate-600">
-                            {batch.timestamp.split('T')[0]} {batch.timestamp.split('T')[1].substring(0, 5)}
-                          </td>
-                          <td className="px-4 py-4 font-bold text-slate-800">
-                            {batch.total_tasks} tasks
-                          </td>
-                          <td className="px-4 py-4">
-                            <span className={`px-2 py-1 text-[10px] font-black rounded uppercase ${batch.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
-                              }`}>
-                              {batch.status}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4 flex gap-2">
-                            <button className="text-xs font-bold text-slate-400 hover:text-primary-600">View Details &rarr;</button>
-                            {batch.status === 'completed' && (
-                              <a
-                                href={scraperService.getBatchExportUrl(batch.id)}
-                                download
-                                onClick={(e) => e.stopPropagation()}
-                                className="p-1 text-slate-400 hover:text-blue-600"
-                                title="Download Batch CSV"
-                              >
-                                <Database size={14} />
-                              </a>
-                            )}
-                          </td>
-                        </tr>
-                      )) : (
-                        <tr>
-                          <td colSpan="5" className="px-4 py-10 text-center text-slate-400 italic">No batch history found. Upload a CSV to start.</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ) : (
-              // Batch Detail View
-              <div className="glass-card p-6">
-                <div className="flex justify-between items-center mb-6">
-                  <div className="flex items-center gap-4">
-                    <button
-                      onClick={() => setSelectedBatch(null)}
-                      className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors"
-                    >
-                      &larr; Back
-                    </button>
-                    <div>
-                      <h3 className="font-bold text-lg text-slate-800">Batch {selectedBatch.id} Details</h3>
-                      <p className="text-xs text-slate-500">{selectedBatch.timestamp}</p>
-                    </div>
-                  </div>
-                  <span className={`px-3 py-1 text-xs font-bold rounded-full uppercase ${selectedBatch.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
-                    }`}>
-                    {selectedBatch.status}
-                  </span>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="border-b border-slate-100 text-slate-400 text-xs uppercase tracking-widest font-black">
-                        <th className="px-4 py-4">Route</th>
-                        <th className="px-4 py-4">Status</th>
-                        <th className="px-4 py-4">Message / Error</th>
-                        <th className="px-4 py-4">Data Count</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50">
-                      {selectedBatch.tasks.map((task, i) => (
-                        <tr key={i} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-4 py-4 font-bold text-slate-800">
-                            {task.origin} → {task.destination}
-                          </td>
-                          <td className="px-4 py-4">
-                            <span className={`px-2 py-1 text-[10px] font-black rounded uppercase ${task.status === 'success' ? 'bg-emerald-100 text-emerald-700' :
-                              task.status === 'failed' ? 'bg-rose-100 text-rose-700' :
-                                'bg-slate-100 text-slate-600'
-                              }`}>
-                              {task.status}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4 text-xs font-mono">
-                            <span className={task.status === 'failed' ? 'text-rose-600 font-bold' : 'text-slate-500'}>
-                              {task.message}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4 font-bold text-slate-500">
-                            {task.result_count}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-        {activeTab === 'search' && (
-          <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 text-left">
-            <div className="md:col-span-2 glass-card p-8 shadow-2xl relative overflow-hidden border-none lg:p-10">
-              <div className="absolute top-0 right-0 w-32 h-32 gradient-bg opacity-5 -mr-16 -mt-16 rounded-full" />
-              <h2 className="text-2xl font-bold text-slate-800 mb-8 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-primary-50 flex items-center justify-center text-primary-600">
-                  <Search size={22} />
-                </div>
-                Configure Research Task
-              </h2>
-              <TaskForm onSubmit={handleLaunchTask} />
-            </div>
-
+        {
+          activeTab === 'data' && (
             <div className="space-y-6">
-              <div className="glass-card p-8 border-dashed border-2 border-slate-200 bg-slate-50/50">
-                <div className="w-12 h-12 rounded-2xl bg-white shadow-sm flex items-center justify-center text-primary-600 mb-6">
-                  <Upload size={24} />
-                </div>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Batch CSV Upload</h3>
-                <p className="text-sm text-slate-500 mb-6">Upload a CSV file for multiple automated searches. System will process rows sequentially.</p>
+              {!selectedBatch ? (
+                // Batch List View
+                <div className="glass-card p-6">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="font-bold text-lg text-slate-800">Batch History</h3>
+                    <button
+                      onClick={handleDownloadCSV}
+                      className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-md hover:bg-primary-700 transition-all"
+                    >
+                      <Database size={16} /> Export All Results
+                    </button>
+                  </div>
 
-                <label className="block w-full">
-                  <span className="sr-only">Choose CSV file</span>
-                  <input
-                    type="file"
-                    accept=".csv"
-                    onChange={handleBatchUpload}
-                    className="block w-full text-sm text-slate-500
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-slate-400 text-xs uppercase tracking-widest font-black">
+                          <th className="px-4 py-4">Batch ID</th>
+                          <th className="px-4 py-4">Time</th>
+                          <th className="px-4 py-4">Total Tasks</th>
+                          <th className="px-4 py-4">Status</th>
+                          <th className="px-4 py-4">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {batches.length > 0 ? batches.map((batch, i) => (
+                          <tr key={i} className="hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => setSelectedBatch(batch)}>
+                            <td className="px-4 py-4 font-mono text-xs font-bold text-primary-600">
+                              {batch.id}
+                            </td>
+                            <td className="px-4 py-4 text-sm font-medium text-slate-600">
+                              {batch.timestamp.split('T')[0]} {batch.timestamp.split('T')[1].substring(0, 5)}
+                            </td>
+                            <td className="px-4 py-4 font-bold text-slate-800">
+                              {batch.total_tasks} tasks
+                            </td>
+                            <td className="px-4 py-4">
+                              <span className={`px-2 py-1 text-[10px] font-black rounded uppercase ${batch.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
+                                }`}>
+                                {batch.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-4 flex gap-2 items-center">
+                              <button className="text-xs font-bold text-slate-400 hover:text-primary-600" onClick={() => setSelectedBatch(batch)}>View Details &rarr;</button>
+
+                              {/* Download CSV */}
+                              {batch.status === 'completed' && (
+                                <a
+                                  href={scraperService.getBatchExportUrl(batch.id)}
+                                  download
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="p-1 text-slate-400 hover:text-blue-600"
+                                  title="Download Batch CSV"
+                                >
+                                  <Database size={14} />
+                                </a>
+                              )}
+
+                              {/* Delete Batch */}
+                              <button
+                                onClick={(e) => handleDeleteBatch(e, batch.id)}
+                                className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                title="Delete Batch"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        )) : (
+                          <tr>
+                            <td colSpan="5" className="px-4 py-10 text-center text-slate-400 italic">No batch history found. Upload a CSV to start.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                // Batch Detail View
+                <div className="glass-card p-6">
+                  <div className="flex justify-between items-center mb-6">
+                    <div className="flex items-center gap-4">
+                      <button
+                        onClick={() => setSelectedBatch(null)}
+                        className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors"
+                      >
+                        &larr; Back
+                      </button>
+                      <div>
+                        <h3 className="font-bold text-lg text-slate-800">Batch {selectedBatch.id} Details</h3>
+                        <p className="text-xs text-slate-500">{selectedBatch.timestamp}</p>
+                      </div>
+                    </div>
+                    <span className={`px-3 py-1 text-xs font-bold rounded-full uppercase ${selectedBatch.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
+                      }`}>
+                      {selectedBatch.status}
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-slate-400 text-xs uppercase tracking-widest font-black">
+                          <th className="px-4 py-4">Route</th>
+                          <th className="px-4 py-4">Status</th>
+                          <th className="px-4 py-4">Message / Error</th>
+                          <th className="px-4 py-4">Data Count</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {selectedBatch.tasks.map((task, i) => (
+                          <tr key={i} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-4 py-4 font-bold text-slate-800">
+                              {task.origin} → {task.destination}
+                            </td>
+                            <td className="px-4 py-4">
+                              <span className={`px-2 py-1 text-[10px] font-black rounded uppercase ${task.status === 'success' ? 'bg-emerald-100 text-emerald-700' :
+                                task.status === 'failed' ? 'bg-rose-100 text-rose-700' :
+                                  'bg-slate-100 text-slate-600'
+                                }`}>
+                                {task.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-4 text-xs font-mono">
+                              <span className={task.status === 'failed' ? 'text-rose-600 font-bold' : 'text-slate-500'}>
+                                {task.message}
+                              </span>
+                            </td>
+                            <td className="px-4 py-4 font-bold text-slate-500">
+                              {task.result_count}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        }
+        {
+          activeTab === 'search' && (
+            <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 text-left">
+              <div className="md:col-span-2 glass-card p-8 shadow-2xl relative overflow-hidden border-none lg:p-10">
+                <div className="absolute top-0 right-0 w-32 h-32 gradient-bg opacity-5 -mr-16 -mt-16 rounded-full" />
+                <h2 className="text-2xl font-bold text-slate-800 mb-8 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary-50 flex items-center justify-center text-primary-600">
+                    <Search size={22} />
+                  </div>
+                  Configure Research Task
+                </h2>
+                <TaskForm onSubmit={handleLaunchTask} />
+              </div>
+
+              <div className="space-y-6">
+                <div className="glass-card p-8 border-dashed border-2 border-slate-200 bg-slate-50/50">
+                  <div className="w-12 h-12 rounded-2xl bg-white shadow-sm flex items-center justify-center text-primary-600 mb-6">
+                    <Upload size={24} />
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-800 mb-2">Batch CSV Upload</h3>
+                  <p className="text-sm text-slate-500 mb-6">Upload a CSV file for multiple automated searches. System will process rows sequentially.</p>
+
+                  <label className="block w-full">
+                    <span className="sr-only">Choose CSV file</span>
+                    <input
+                      type="file"
+                      accept=".csv"
+                      onChange={handleBatchUpload}
+                      className="block w-full text-sm text-slate-500
                       file:mr-4 file:py-2.5 file:px-4
                       file:rounded-xl file:border-0
                       file:text-sm file:font-bold
                       file:bg-primary-600 file:text-white
                       hover:file:bg-primary-700
                       cursor-pointer"
-                  />
-                </label>
+                    />
+                  </label>
 
-                <div className="mt-8 pt-6 border-t border-slate-200">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Required Headers</p>
-                  <div className="flex flex-wrap gap-2">
-                    {['origin', 'destination', 'start_date'].map(h => (
-                      <span key={h} className="px-2 py-1 bg-white border border-slate-200 rounded text-[10px] font-mono text-slate-600">{h}</span>
-                    ))}
+                  <div className="mt-8 pt-6 border-t border-slate-200">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Required Headers</p>
+                    <div className="flex flex-wrap gap-2">
+                      {['origin', 'destination', 'start_date'].map(h => (
+                        <span key={h} className="px-2 py-1 bg-white border border-slate-200 rounded text-[10px] font-mono text-slate-600">{h}</span>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="glass-card p-6 bg-slate-800 text-white border-none">
-                <div className="flex items-center gap-3 mb-4">
-                  <FileText className="text-blue-400" size={20} />
-                  <h4 className="font-bold">Template Info</h4>
+                <div className="glass-card p-6 bg-slate-800 text-white border-none">
+                  <div className="flex items-center gap-3 mb-4">
+                    <FileText className="text-blue-400" size={20} />
+                    <h4 className="font-bold">Template Info</h4>
+                  </div>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Date format: <b>MM/DD/YYYY</b><br />
+                    Optional headers: trip_type, routing_codes, cabin, nights.
+                  </p>
                 </div>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Date format: <b>MM/DD/YYYY</b><br />
-                  Optional headers: trip_type, routing_codes, cabin, nights.
-                </p>
               </div>
             </div>
-          </div>
-        )}
-      </main>
-    </div>
+          )
+        }
+      </main >
+    </div >
   );
 }

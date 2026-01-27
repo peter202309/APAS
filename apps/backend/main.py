@@ -227,6 +227,25 @@ async def get_batch_details(batch_id: str):
         return Response(status_code=404)
     return db_batches[batch_id]
 
+@app.delete("/batches/{batch_id}")
+async def delete_batch(batch_id: str):
+    if batch_id not in db_batches:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    
+    # Delete from batches
+    del db_batches[batch_id]
+    
+    # Delete associated results
+    # We need to use global db_results and modify it
+    global db_results
+    original_count = len(db_results)
+    db_results = [r for r in db_results if getattr(r, 'batch_id', None) != batch_id]
+    removed_results = original_count - len(db_results)
+    
+    save_db_to_disk()
+    logger.info(f"Deleted batch {batch_id} and {removed_results} associated results.")
+    return {"status": "success", "message": f"Batch {batch_id} deleted", "results_removed": removed_results}
+
 @app.post("/ai/analyze")
 async def analyze_batch(payload: dict):
     if not ai_client:

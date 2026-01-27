@@ -67,5 +67,10 @@ export const scraperService = {
 
     getBatchExportUrl(batchId) {
         return `${API_BASE}/export/csv/${batchId}`;
+    },
+
+    async deleteBatch(batchId) {
+        const response = await axios.delete(`${API_BASE}/batches/${batchId}`);
+        return response.data;
     }
 };
