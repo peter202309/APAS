@@ -11,6 +11,7 @@ env/
 # Node
 node_modules/
 # dist/
+!apps/frontend/dist/
 .eslintcache
 
 # Project Specific
