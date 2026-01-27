@@ -43,11 +43,14 @@ export const scraperService = {
         return response.data;
     },
 
-    async uploadComparisonFiles(files) {
+    async uploadComparisonFiles(files, userPrompt = null) {
         const formData = new FormData();
         Array.from(files).forEach(file => {
-            formData.append('files', file);
+            formData.append("files", file);
         });
+        if (userPrompt) {
+            formData.append("user_prompt", userPrompt);
+        }
         const response = await axios.post(`${API_BASE}/ai/compare_files`, formData, {
             headers: { 'Content-Type': 'multipart/form-data' }
         });

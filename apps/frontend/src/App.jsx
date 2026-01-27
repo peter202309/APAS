@@ -138,7 +138,7 @@ export default function App() {
 
     setIsComparing(true);
     try {
-      const data = await scraperService.uploadComparisonFiles(files);
+      const data = await scraperService.uploadComparisonFiles(files, customPrompt);
       setComparisonReport(data.report);
     } catch (error) {
       console.error("Comparison failed:", error);
@@ -372,6 +372,16 @@ export default function App() {
                         </>
                       )}
                     </label>
+                    <div className="mt-4 pt-4 border-t border-slate-100">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 block">Optional: Comparison Focus</label>
+                      <textarea
+                        className="w-full text-sm p-3 rounded-lg border border-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-none bg-slate-50"
+                        placeholder="E.g., Compare weekend pricing..."
+                        rows="2"
+                        value={customPrompt}
+                        onChange={(e) => setCustomPrompt(e.target.value)}
+                      />
+                    </div>
                   </>
                 ) : (
                   <>

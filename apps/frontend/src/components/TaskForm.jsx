@@ -62,9 +62,9 @@ export default function TaskForm({ onSubmit }) {
                     onChange={(e) => setTask({ ...task, trip_type: e.target.value })}
                 />
                 <InputField
-                    label="Start Date (MM/DD/YYYY)"
+                    label="Start Date(s)"
                     icon={Calendar}
-                    placeholder="e.g. 02/01/2026"
+                    placeholder="e.g. 02/01/2026, 02/05/2026"
                     value={task.start_date}
                     onChange={(e) => setTask({ ...task, start_date: e.target.value })}
                 />

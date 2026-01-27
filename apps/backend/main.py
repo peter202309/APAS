@@ -4,10 +4,10 @@ import csv
 import uuid
 import pandas as pd
 from datetime import datetime
-from fastapi import FastAPI, BackgroundTasks, Response, UploadFile, File
+from fastapi import FastAPI, BackgroundTasks, Response, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List
+from typing import List, Optional
 import uvicorn
 from .schemas import ScraperTask, ScraperResult, LogEntry, BatchComparisonRequest
 from core.scraper.ita_engine import ITAEngine
@@ -96,30 +96,68 @@ load_db_from_disk()
 
 @app.post("/tasks/scrape", response_model=dict)
 async def create_scrape_task(task: ScraperTask, background_tasks: BackgroundTasks):
-    # Generate a unique batch_id for this single task so it appears in history
-    batch_id = f"single-{str(uuid.uuid4())[:8]}"
+    # Parse start_date for multiple dates (comma separated)
+    raw_dates = str(task.start_date).split(',')
+    clean_dates = [d.strip() for d in raw_dates if d.strip()]
     
-    # Register in db_batches
-    db_batches[batch_id] = {
-        "id": batch_id,
-        "timestamp": datetime.now().isoformat(),
-        "total_tasks": 1,
-        "status": "processing",
-        "tasks": [
-            {
-                "task_id": "0",
-                "origin": task.origin,
-                "destination": task.destination,
-                "status": "pending",
-                "message": "Waiting to start...",
-                "result_count": 0
-            }
-        ]
-    }
-    
-    background_tasks.add_task(run_scrape_process, task, batch_id)
-    save_db_to_disk()
-    return {"status": "accepted", "task": task, "batch_id": batch_id}
+    if len(clean_dates) > 1:
+        # Multiple dates detected -> Create a BATCH
+        batch_id = f"{str(uuid.uuid4())[:8]}" # Regular batch ID
+        sub_tasks = []
+        
+        for date_str in clean_dates:
+            # Create a copy of the task for each date
+            new_task = task.copy()
+            new_task.start_date = date_str
+            sub_tasks.append(new_task)
+            
+        # Register in db_batches
+        db_batches[batch_id] = {
+            "id": batch_id,
+            "timestamp": datetime.now().isoformat(),
+            "total_tasks": len(sub_tasks),
+            "status": "processing",
+            "tasks": [
+                {
+                    "task_id": str(i),
+                    "origin": t.origin,
+                    "destination": t.destination,
+                    "status": "pending",
+                    "message": f"Scheduled for {t.start_date}",
+                    "result_count": 0
+                } for i, t in enumerate(sub_tasks)
+            ]
+        }
+        
+        background_tasks.add_task(run_batch_process, sub_tasks, batch_id)
+        save_db_to_disk()
+        return {"status": "batch_started", "batch_id": batch_id, "task_count": len(sub_tasks), "message": f"Started batch for {len(sub_tasks)} dates"}
+
+    else:
+        # Single date -> Single Task logic
+        batch_id = f"single-{str(uuid.uuid4())[:8]}"
+        
+        # Register in db_batches
+        db_batches[batch_id] = {
+            "id": batch_id,
+            "timestamp": datetime.now().isoformat(),
+            "total_tasks": 1,
+            "status": "processing",
+            "tasks": [
+                {
+                    "task_id": "0",
+                    "origin": task.origin,
+                    "destination": task.destination,
+                    "status": "pending",
+                    "message": "Waiting to start...",
+                    "result_count": 0
+                }
+            ]
+        }
+        
+        background_tasks.add_task(run_scrape_process, task, batch_id)
+        save_db_to_disk()
+        return {"status": "accepted", "task": task, "batch_id": batch_id}
 
 @app.post("/tasks/batch-upload")
 async def batch_upload(file: UploadFile = File(...), background_tasks: BackgroundTasks = BackgroundTasks()):
@@ -229,7 +267,7 @@ async def analyze_batch(payload: dict):
     return {"report": report}
 
 @app.post("/ai/compare_files")
-async def analyze_comparison_files(files: List[UploadFile] = File(...)):
+async def analyze_comparison_files(files: List[UploadFile] = File(...), user_prompt: Optional[str] = Form(None)):
     if not ai_client:
         raise HTTPException(status_code=503, detail="AI Client not initialized (Check configuration)")
     
@@ -275,7 +313,7 @@ async def analyze_comparison_files(files: List[UploadFile] = File(...)):
     if not comparison_data:
          raise HTTPException(status_code=400, detail="Could not extract date/price data from uploaded files.")
 
-    report = ai_client.compare_airlines(comparison_data)
+    report = ai_client.compare_airlines(comparison_data, user_prompt=user_prompt)
     return {"report": report}
 
 @app.post("/ai/compare_batches")
