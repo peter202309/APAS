@@ -10,10 +10,8 @@ import {
   Loader2,
   CheckCircle2,
   Upload,
-  FileText,
-  Sparkles
+  FileText
 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
 import TaskForm from './components/TaskForm';
 import { scraperService } from './services/api';
 
@@ -37,13 +35,6 @@ export default function App() {
   const [results, setResults] = useState([]);
   const [batches, setBatches] = useState([]);
   const [selectedBatch, setSelectedBatch] = useState(null);
-  const [aiReport, setAiReport] = useState(null);
-  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
-  const [comparisonReport, setComparisonReport] = useState(null);
-  const [isComparing, setIsComparing] = useState(false);
-  const [comparisonMode, setComparisonMode] = useState('upload'); // 'upload' | 'select'
-  const [selectedBatchIds, setSelectedBatchIds] = useState([]);
-  const [customPrompt, setCustomPrompt] = useState('');
 
   // 轮询日志和结果
   useEffect(() => {
@@ -109,69 +100,6 @@ export default function App() {
 
   const handleDownloadCSV = () => {
     window.open('http://localhost:8080/export/csv', '_blank');
-  };
-
-  const handleGenerateAI = async () => {
-    setIsGeneratingAi(true);
-    try {
-      // Use most recent batch if available, otherwise global
-      const recentBatch = batches.length > 0 ? batches[0] : null;
-      const payload = recentBatch
-        ? { batch_id: recentBatch.id, origin: "BATCH", destination: "ANALYSIS" }
-        : { origin: "GLOBAL", destination: "MARKET" };
-
-      const res = await scraperService.generateAIReport(payload);
-      setAiReport(res.report);
-    } catch (err) {
-      alert("AI Generation Failed: " + err.message);
-    } finally {
-      setIsGeneratingAi(false);
-    }
-  };
-
-  const handleCompareFiles = async (event) => {
-    const files = event.target.files;
-    if (!files || files.length < 2) {
-      alert("Please select at least 2 CSV files for comparison.");
-      return;
-    }
-
-    setIsComparing(true);
-    try {
-      const data = await scraperService.uploadComparisonFiles(files);
-      setComparisonReport(data.report);
-    } catch (error) {
-      console.error("Comparison failed:", error);
-      alert("Failed to generate comparison report.");
-    } finally {
-      setIsComparing(false);
-    }
-  };
-
-  const handleCompareBatches = async () => {
-    if (selectedBatchIds.length < 2) {
-      alert("Please select at least 2 batches to compare.");
-      return;
-    }
-    setIsComparing(true);
-    try {
-      const data = await scraperService.compareBatches(selectedBatchIds, customPrompt);
-      setComparisonReport(data.report);
-    } catch (error) {
-      console.error("Batch comparison failed:", error);
-      alert("Failed to compare batches: " + (error.response?.data?.detail || error.message));
-    } finally {
-      setIsComparing(false);
-    }
-  };
-
-  const toggleBatchSelection = (id) => {
-    if (selectedBatchIds.includes(id)) {
-      setSelectedBatchIds(prev => prev.filter(bid => bid !== id));
-    } else {
-      if (selectedBatchIds.length >= 5) return alert("max 5 batches");
-      setSelectedBatchIds(prev => [...prev, id]);
-    }
   };
 
   return (
@@ -268,6 +196,23 @@ export default function App() {
             </div>
 
             <div className="space-y-6">
+              <div className="glass-card p-6">
+                <h3 className="font-bold text-lg mb-6 flex items-center gap-2 text-slate-800">
+                  <AlertCircle className="text-amber-500" size={22} />
+                  MU Intelligence
+                </h3>
+                <div className="space-y-6">
+                  <div className="p-4 bg-amber-50 border-1 border-amber-100 border-l-4 border-amber-400 shadow-sm rounded-r-xl">
+                    <p className="text-[10px] font-black text-amber-800 uppercase tracking-widest bg-amber-200 w-max px-1.5 rounded mb-2">High Variance</p>
+                    <p className="text-sm text-amber-900 font-semibold leading-relaxed">MU 5101: Price spiked 12% compared to last check. Competitors remain stable.</p>
+                  </div>
+                  <div className="p-4 bg-emerald-50 border-1 border-emerald-100 border-l-4 border-emerald-400 shadow-sm rounded-r-xl">
+                    <p className="text-[10px] font-black text-emerald-800 uppercase tracking-widest bg-emerald-200 w-max px-1.5 rounded mb-2">Strategy Tip</p>
+                    <p className="text-sm text-emerald-900 font-semibold leading-relaxed">Feb 20-22: Competitor sold out. Suggested markup: +15%.</p>
+                  </div>
+                </div>
+              </div>
+
               <div className="glass-card p-6 bg-gradient-to-br from-primary-600 to-blue-700 text-white border-none shadow-blue-200">
                 <h3 className="font-bold text-lg mb-4">Export Stats</h3>
                 <p className="text-sm text-blue-100 mb-6 font-medium">Capture results for local archive or spreadsheet analysis.</p>
@@ -278,186 +223,6 @@ export default function App() {
                   <Database size={18} /> Download CSV Report
                 </button>
               </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'ai' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full">
-            {/* Left Controls */}
-            <div className="space-y-6">
-              <div className="glass-card p-6 bg-gradient-to-br from-indigo-900 to-purple-900 text-white border-none shadow-xl">
-                <h3 className="font-bold text-xl mb-4 flex items-center gap-2">
-                  <Sparkles className="text-yellow-300" />
-                  AI Strategy Engine
-                </h3>
-                <p className="text-indigo-200 text-sm mb-6 leading-relaxed">
-                  Powered by Gemini 1.5 Pro. Analyze your latest flight data to detect trends, anomalies, and pricing opportunities.
-                </p>
-
-                <div className="bg-white/10 rounded-xl p-4 mb-6 backdrop-blur-sm">
-                  <p className="text-xs text-indigo-300 uppercase tracking-widest font-bold mb-2">Data Source</p>
-                  <div className="flex items-center gap-3">
-                    <Database size={16} className="text-indigo-400" />
-                    <span className="font-mono text-sm font-bold">
-                      {batches.length > 0 ? `Batch #${batches[0].id} (${batches[0].total_tasks} tasks)` : 'Global Data History'}
-                    </span>
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleGenerateAI}
-                  disabled={isGeneratingAi}
-                  className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg
-                                ${isGeneratingAi ? 'bg-indigo-800 text-indigo-400 cursor-not-allowed' : 'bg-white text-indigo-900 hover:bg-indigo-50'}`}
-                >
-                  {isGeneratingAi ? (
-                    <>
-                      <Loader2 className="animate-spin" /> Analyzing Data...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles size={18} /> Generate Strategy Report
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {/* New: Competitor Comparison Upload */}
-              {/* New: Competitor Comparison Upload */}
-              <div className="glass-card p-6 border-slate-200 shadow-sm bg-white">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-bold text-lg flex items-center gap-2 text-slate-800">
-                    <Upload size={20} className="text-blue-500" />
-                    Competitor Analysis
-                  </h3>
-                  <div className="flex bg-slate-100 rounded-lg p-1">
-                    <button
-                      className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${comparisonMode === 'upload' ? 'bg-white shadow text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
-                      onClick={() => setComparisonMode('upload')}
-                    >
-                      Upload
-                    </button>
-                    <button
-                      className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${comparisonMode === 'select' ? 'bg-white shadow text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
-                      onClick={() => setComparisonMode('select')}
-                    >
-                      History
-                    </button>
-                  </div>
-                </div>
-
-                {comparisonMode === 'upload' ? (
-                  <>
-                    <p className="text-sm text-slate-500 mb-4">
-                      Upload multiple CSVs (e.g., MU.csv, AC.csv) to generate a cross-airline strategy report.
-                    </p>
-                    <label className={`w-full border-2 border-dashed border-slate-300 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 transition-colors ${isComparing ? 'opacity-50 pointer-events-none' : ''}`}>
-                      <input
-                        type="file"
-                        multiple
-                        accept=".csv"
-                        onChange={handleCompareFiles}
-                        className="hidden"
-                      />
-                      {isComparing ? (
-                        <>
-                          <Loader2 className="animate-spin text-blue-500 mb-2" />
-                          <span className="text-sm font-bold text-blue-600">Analyzing Files...</span>
-                        </>
-                      ) : (
-                        <>
-                          <FileText className="text-slate-400 mb-2" />
-                          <span className="text-sm font-bold text-slate-600">Select 2+ Files</span>
-                        </>
-                      )}
-                    </label>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm text-slate-500 mb-4">
-                      Select previous batches to compare via AI.
-                    </p>
-                    <div className="max-h-48 overflow-y-auto space-y-2 mb-4 pr-2 custom-scrollbar">
-                      {batches.length > 0 ? batches.map(b => (
-                        <div key={b.id}
-                          className={`p-3 rounded-lg border cursor-pointer flex justify-between items-center transition-all ${selectedBatchIds.includes(b.id) ? 'border-blue-500 bg-blue-50 shadow-sm' : 'border-slate-100 hover:bg-slate-50'}`}
-                          onClick={() => toggleBatchSelection(b.id)}
-                        >
-                          <div>
-                            <div className="text-xs font-bold text-slate-700">Batch #{b.id}</div>
-                            {/* Status Tag */}
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className={`w-2 h-2 rounded-full ${b.status === 'completed' ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
-                              <span className="text-[10px] text-slate-500 font-mono">{b.timestamp.split('T')[0]}</span>
-                            </div>
-                          </div>
-                          {selectedBatchIds.includes(b.id) ?
-                            <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold shadow-sm">✓</div> :
-                            <div className="w-5 h-5 rounded-full border border-slate-300"></div>
-                          }
-                        </div>
-                      )) : <p className="text-xs text-slate-400 italic text-center py-4">No batch history available.</p>}
-                    </div>
-                    <div className="mb-4 pt-4 border-t border-slate-100">
-                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 block">Optional: Comparison Focus</label>
-                      <textarea
-                        className="w-full text-sm p-3 rounded-lg border border-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-none bg-slate-50"
-                        placeholder="E.g., Compare weekend pricing, or check if MU undercuts CA..."
-                        rows="2"
-                        value={customPrompt}
-                        onChange={(e) => setCustomPrompt(e.target.value)}
-                      />
-                    </div>
-
-                    <button
-                      onClick={handleCompareBatches}
-                      disabled={selectedBatchIds.length < 2 || isComparing}
-                      className={`w-full py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${selectedBatchIds.length < 2 || isComparing ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:shadow-lg hover:shadow-blue-200'}`}
-                    >
-                      {isComparing ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />}
-                      {isComparing ? 'Comparing...' : `Compare (${selectedBatchIds.length}) Batches`}
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Right Content - Report */}
-            <div className="lg:col-span-2 glass-card p-8 min-h-[500px] flex flex-col relative overflow-y-auto">
-              {/* Header Tabs to switch reports if both exist */}
-              {(aiReport && comparisonReport) && (
-                <div className="flex gap-4 mb-6 border-b border-slate-100">
-                  <button onClick={() => setComparisonReport(null)} className="pb-2 font-bold text-slate-400 hover:text-slate-800">Single Analysis</button>
-                  <button className="pb-2 font-bold text-indigo-600 border-b-2 border-indigo-600">Comparison Report</button>
-                </div>
-              )}
-
-              {comparisonReport ? (
-                <div className="prose prose-slate max-w-none">
-                  <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
-                    <h2 className="text-2xl font-bold text-indigo-900 m-0">Competitive Landscape Report</h2>
-                    <span className="text-xs text-slate-400 font-mono">Generated: {new Date().toLocaleTimeString()}</span>
-                  </div>
-                  <ReactMarkdown>{comparisonReport}</ReactMarkdown>
-                  <button onClick={() => setComparisonReport(null)} className="mt-8 text-sm text-slate-400 underline">Back to Single Analysis</button>
-                </div>
-              ) : !aiReport ? (
-                <div className="flex-1 flex flex-col items-center justify-center text-slate-300">
-                  <div className="w-24 h-24 rounded-full bg-slate-50 flex items-center justify-center mb-6">
-                    <Sparkles size={40} className="text-slate-200" />
-                  </div>
-                  <p className="font-medium">Ready to analyze. Click "Generate" to start.</p>
-                </div>
-              ) : (
-                <div className="prose prose-slate max-w-none">
-                  <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
-                    <h2 className="text-2xl font-bold text-slate-800 m-0">Market Analysis Report</h2>
-                    <span className="text-xs text-slate-400 font-mono">Generated: {new Date().toLocaleTimeString()}</span>
-                  </div>
-                  <ReactMarkdown>{aiReport}</ReactMarkdown>
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -506,19 +271,8 @@ export default function App() {
                               {batch.status}
                             </span>
                           </td>
-                          <td className="px-4 py-4 flex gap-2">
+                          <td className="px-4 py-4">
                             <button className="text-xs font-bold text-slate-400 hover:text-primary-600">View Details &rarr;</button>
-                            {batch.status === 'completed' && (
-                              <a
-                                href={scraperService.getBatchExportUrl(batch.id)}
-                                download
-                                onClick={(e) => e.stopPropagation()}
-                                className="p-1 text-slate-400 hover:text-blue-600"
-                                title="Download Batch CSV"
-                              >
-                                <Database size={14} />
-                              </a>
-                            )}
                           </td>
                         </tr>
                       )) : (
@@ -570,8 +324,8 @@ export default function App() {
                           </td>
                           <td className="px-4 py-4">
                             <span className={`px-2 py-1 text-[10px] font-black rounded uppercase ${task.status === 'success' ? 'bg-emerald-100 text-emerald-700' :
-                              task.status === 'failed' ? 'bg-rose-100 text-rose-700' :
-                                'bg-slate-100 text-slate-600'
+                                task.status === 'failed' ? 'bg-rose-100 text-rose-700' :
+                                  'bg-slate-100 text-slate-600'
                               }`}>
                               {task.status}
                             </span>

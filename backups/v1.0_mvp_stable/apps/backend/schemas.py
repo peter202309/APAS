@@ -40,7 +40,3 @@ class LogEntry(BaseModel):
     message: str
     task_id: Optional[str] = None
     batch_id: Optional[str] = None
-
-class BatchComparisonRequest(BaseModel):
-    batch_ids: List[str]
-    user_prompt: Optional[str] = None

@@ -5,9 +5,6 @@ from playwright_stealth import Stealth
 from typing import List, Dict
 from apps.backend.schemas import ScraperTask, FlightPrice, ScraperResult
 from datetime import datetime
-from datetime import datetime
-from .proxy_manager import proxy_manager
-from .utils import human_sleep
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -47,30 +44,27 @@ class ITAEngine:
         logger.info(f"Standardized start date: {task.start_date} -> {formatted_start_date}")
 
         async with async_playwright() as p:
-            # Launch browser
-            browser = await p.chromium.launch(
-                headless=self.headless,
-                args=['--no-sandbox', '--disable-setuid-sandbox']
-            )
-            
-            # Configure context with random User-Agent
-            user_agent = proxy_manager.get_random_user_agent()
-            logger.info(f"Using User-Agent: {user_agent[:50]}...")
-            
-            context = await browser.new_context(
-                viewport={'width': 1920, 'height': 1080},
-                user_agent=user_agent
-            )
+            # Connect to existing Chrome instance opened via start_chrome_debug.bat
+            # ensure you ran the bat file first!
+            try:
+                # Switching to port 9223 to avoid conflict with other 9222 sessions
+                logger.info("Attempting to connect to existing Chrome at port 9223...")
+                browser = await p.chromium.connect_over_cdp("http://localhost:9223")
+                context = browser.contexts[0]
+                logger.info("Successfully connected to existing Chrome session.")
+            except Exception as e:
+                logger.error(f"Could not connect to Chrome at port 9222. Did you run 'start_chrome_debug.bat'? Error: {e}")
+                # Fallback or re-raise? For now re-raise to alert user
+                raise e
             
             # Get the default page or create one
             page = context.pages[0] if context.pages else await context.new_page()
             await Stealth().apply_stealth_async(page)
             
             try:
-                # 1. Access Main Page
                 logger.info(f"Navigating to {self.url}...")
-                await page.goto(self.url, timeout=60000)
-                await human_sleep(2, 4) # Wait for page load
+                await page.goto(self.url, wait_until="networkidle", timeout=60000)
+                await asyncio.sleep(2)
 
                 # 1. 处理欢迎弹窗和干扰
                 try:
@@ -93,7 +87,7 @@ class ITAEngine:
                     type_btn = await page.query_selector(f'div[role="tab"]:has-text("{target_tab_text}"), button:has-text("{target_tab_text}")')
                     if type_btn:
                         await type_btn.click()
-                        await human_sleep(1, 2)
+                        await asyncio.sleep(1)
                 except Exception as e:
                     logger.warning(f"Failed to switch trip type tab: {e}")
 
@@ -107,7 +101,7 @@ class ITAEngine:
                 await page.keyboard.press("Control+a")
                 await page.keyboard.press("Backspace")
                 await origin_box.type(task.origin, delay=200) # Slower typing
-                await human_sleep(3, 5) # Increased wait for autocomplete
+                await asyncio.sleep(5) # Increased wait for autocomplete
                 # Try to select the first option if it appears
                 try:
                     await page.wait_for_selector('mat-option', timeout=5000)
@@ -115,7 +109,7 @@ class ITAEngine:
                     await page.keyboard.press("Enter")
                 except:
                     await page.keyboard.press("Enter")
-                await human_sleep(0.5, 1.5)
+                await asyncio.sleep(1)
                 
                 # 目的地 - Slow down interaction
                 dest_box = await page.wait_for_selector('mat-form-field:has-text("Destination") input', timeout=15000)
@@ -123,14 +117,14 @@ class ITAEngine:
                 await page.keyboard.press("Control+a")
                 await page.keyboard.press("Backspace")
                 await dest_box.type(task.destination, delay=200)
-                await human_sleep(3, 5) # Increased wait for autocomplete
+                await asyncio.sleep(5) # Increased wait for autocomplete
                 try:
                     await page.wait_for_selector('mat-option', timeout=5000)
                     await page.keyboard.press("ArrowDown")
                     await page.keyboard.press("Enter")
                 except:
                     await page.keyboard.press("Enter")
-                await human_sleep(0.5, 1.5)
+                await asyncio.sleep(1)
 
                 # 3.5. 处理 Routing Codes (Simplified - No Toggle)
                 # Since user has manually expanded controls in persistent browser, they stay visible
@@ -148,9 +142,9 @@ class ITAEngine:
                         # Check availability
                         if await field.is_visible():
                             await field.focus()
-                            await human_sleep(0.1, 0.3)
+                            await asyncio.sleep(0.1)
                             await field.fill(value)
-                            await human_sleep(0.1, 0.3)
+                            await asyncio.sleep(0.1)
                             logger.info(f"✓ Filled {label} [{index}]: {value}")
                         else:
                             logger.warning(f"Field {label} [{index}] not visible")
@@ -180,9 +174,9 @@ class ITAEngine:
                     # Clear existing text
                     await page.keyboard.press("Control+a")
                     await page.keyboard.press("Backspace")
-                    await human_sleep(0.5, 1)
+                    await asyncio.sleep(0.5)
                     await curr_field.type("CAD", delay=100)
-                    await human_sleep(1, 2) # Wait for dropdown population
+                    await asyncio.sleep(1.5) # Wait for dropdown population
                     # Select the option explicitly
                     await page.click('mat-option:has-text("Canadian Dollar")', timeout=5000)
                     logger.info("✓ Currency set to CAD")
@@ -198,7 +192,7 @@ class ITAEngine:
                         stops_field = page.locator('mat-form-field').filter(has_text="Stops").filter(has_not_text="Extra").first
                         if await stops_field.is_visible():
                             await stops_field.click()
-                            await human_sleep(0.5, 1)
+                            await asyncio.sleep(0.5)
                             # Select option by text (fuzzy match ok for options)
                             await page.click(f'mat-option:has-text("{task.stops}")', timeout=2000)
                             logger.info(f"✓ Stops set to: {task.stops}")
@@ -211,7 +205,7 @@ class ITAEngine:
                         logger.info(f"Setting Extra Stops: {task.extra_stops}")
                         ex_stops_field = await page.wait_for_selector('mat-form-field:has-text("Extra stops")', timeout=5000)
                         await ex_stops_field.click()
-                        await human_sleep(0.5, 1)
+                        await asyncio.sleep(0.5)
                         await page.click(f'mat-option:has-text("{task.extra_stops}")', timeout=2000)
                         logger.info(f"✓ Extra Stops set to: {task.extra_stops}")
                     except Exception as e:
@@ -222,10 +216,10 @@ class ITAEngine:
                 try:
                     # 点击模式下拉框 (通常显示 "Search exact date")
                     await page.click('mat-select[role="combobox"]', timeout=20000)
-                    await human_sleep(1, 2)
+                    await asyncio.sleep(1)
                     # 选中日历选项
                     await page.click('mat-option:has-text("See calendar of lowest fares")', timeout=20000)
-                    await human_sleep(1, 2)
+                    await asyncio.sleep(1)
                 except Exception as e:
                     logger.warning(f"Failed to switch to calendar mode: {e}")
 
@@ -238,27 +232,26 @@ class ITAEngine:
                 # Clear existing text manually to be safe with input masks
                 await page.keyboard.press("Control+a")
                 await page.keyboard.press("Backspace")
-                await human_sleep(0.5, 1)
+                await asyncio.sleep(0.5)
                 await date_box.type(formatted_start_date, delay=100) # Type standard format
-                await human_sleep(0.5, 1)
+                await asyncio.sleep(0.5)
                 await page.keyboard.press("Enter") # Commit the valid date
-                await human_sleep(0.5, 1)
+                await asyncio.sleep(0.5)
                 
                 # 仅在 Round Trip 模式下填写 Nights
                 if task.trip_type == "round_trip":
                     logger.info(f"Filling duration: {task.nights}")
                     duration_box = await page.wait_for_selector('mat-form-field:has-text("Duration (nights)") input', timeout=10000)
                     await duration_box.fill(str(task.nights))
-                    await human_sleep(0.5, 1)
+                    await asyncio.sleep(0.5)
                     await page.keyboard.press("Escape") # 再次确保所有 Material 弹窗关闭
 
 
-                # 6. Execute Search
+                # 6. 执行搜索
                 logger.info("Executing search...")
-                await human_sleep(1, 3) # Pause before clicking search
                 # 在点击搜索前，最后做一次全局 Escape，确保没有遮罩层
                 await page.keyboard.press("Escape")
-                await human_sleep(0.5, 1)
+                await asyncio.sleep(0.5)
                 
                 
                 # 智能 Search 执行策略 - 检测搜索是否已自动触发

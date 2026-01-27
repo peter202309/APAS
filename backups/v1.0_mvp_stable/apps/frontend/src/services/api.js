@@ -35,34 +35,5 @@ export const scraperService = {
             headers: { 'Content-Type': 'multipart/form-data' }
         });
         return response.data;
-    },
-
-    async generateAIReport(params) {
-        // params: { batch_id: "...", origin: "SHA", destination: "YVR" }
-        const response = await axios.post(`${API_BASE}/ai/analyze`, params);
-        return response.data;
-    },
-
-    async uploadComparisonFiles(files) {
-        const formData = new FormData();
-        Array.from(files).forEach(file => {
-            formData.append('files', file);
-        });
-        const response = await axios.post(`${API_BASE}/ai/compare_files`, formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        return response.data;
-    },
-
-    async compareBatches(batchIds, userPrompt = null) {
-        const response = await axios.post(`${API_BASE}/ai/compare_batches`, {
-            batch_ids: batchIds,
-            user_prompt: userPrompt
-        });
-        return response.data;
-    },
-
-    getBatchExportUrl(batchId) {
-        return `${API_BASE}/export/csv/${batchId}`;
     }
 };

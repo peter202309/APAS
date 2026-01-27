@@ -9,18 +9,8 @@ from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 import uvicorn
-from .schemas import ScraperTask, ScraperResult, LogEntry, BatchComparisonRequest
+from .schemas import ScraperTask, ScraperResult, LogEntry
 from core.scraper.ita_engine import ITAEngine
-from core.ai.llm_client import AIGenerator
-import os
-import json
-from pathlib import Path
-
-# Data Persistence Config
-DATA_DIR = Path("data/db")
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-BATCHES_FILE = DATA_DIR / "batches.json"
-RESULTS_FILE = DATA_DIR / "results.json"
 
 import logging
 
@@ -47,79 +37,14 @@ db_results = []
 db_logs = []
 db_batches = {} # New: Store batch metadata and task statuses
 
-# Initialize AI Client (Optional)
-try:
-    ai_client = AIGenerator()
-except Exception as e:
-    print(f"Warning: AI Client failed to initialize: {e}")
-    ai_client = None
-
 @app.get("/")
 async def root():
     return {"message": "APAS API is running", "version": "1.0"}
 
-# Persistence Helpers
-def save_db_to_disk():
-    try:
-        # Convert ScraperResult objects to dicts for JSON serialization
-        results_data = [r.dict() for r in db_results]
-        
-        with open(BATCHES_FILE, 'w', encoding='utf-8') as f:
-            json.dump(db_batches, f, default=str, indent=2)
-            
-        with open(RESULTS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(results_data, f, default=str, indent=2)
-            
-        logger.info("Database saved to disk.")
-    except Exception as e:
-        logger.error(f"Failed to save DB: {e}")
-
-def load_db_from_disk():
-    global db_batches, db_results
-    try:
-        if BATCHES_FILE.exists():
-            with open(BATCHES_FILE, 'r', encoding='utf-8') as f:
-                db_batches.update(json.load(f))
-                
-        if RESULTS_FILE.exists():
-            with open(RESULTS_FILE, 'r', encoding='utf-8') as f:
-                raw_results = json.load(f)
-                # Reconstruct ScraperResult objects
-                db_results.extend([ScraperResult(**r) for r in raw_results])
-                
-        logger.info(f"Database loaded: {len(db_batches)} batches, {len(db_results)} results")
-    except Exception as e:
-        logger.error(f"Failed to load DB: {e}")
-
-# Load data on startup
-load_db_from_disk()
-
 @app.post("/tasks/scrape", response_model=dict)
 async def create_scrape_task(task: ScraperTask, background_tasks: BackgroundTasks):
-    # Generate a unique batch_id for this single task so it appears in history
-    batch_id = f"single-{str(uuid.uuid4())[:8]}"
-    
-    # Register in db_batches
-    db_batches[batch_id] = {
-        "id": batch_id,
-        "timestamp": datetime.now().isoformat(),
-        "total_tasks": 1,
-        "status": "processing",
-        "tasks": [
-            {
-                "task_id": "0",
-                "origin": task.origin,
-                "destination": task.destination,
-                "status": "pending",
-                "message": "Waiting to start...",
-                "result_count": 0
-            }
-        ]
-    }
-    
-    background_tasks.add_task(run_scrape_process, task, batch_id)
-    save_db_to_disk()
-    return {"status": "accepted", "task": task, "batch_id": batch_id}
+    background_tasks.add_task(run_scrape_process, task)
+    return {"status": "accepted", "task": task}
 
 @app.post("/tasks/batch-upload")
 async def batch_upload(file: UploadFile = File(...), background_tasks: BackgroundTasks = BackgroundTasks()):
@@ -175,7 +100,6 @@ async def batch_upload(file: UploadFile = File(...), background_tasks: Backgroun
     }
 
     background_tasks.add_task(run_batch_process, tasks, batch_id)
-    save_db_to_disk() # Save new batch record
     return {"status": "batch_started", "batch_id": batch_id, "task_count": len(tasks)}
 
 @app.get("/batches", response_model=List[dict])
@@ -189,130 +113,9 @@ async def get_batch_details(batch_id: str):
         return Response(status_code=404)
     return db_batches[batch_id]
 
-@app.post("/ai/analyze")
-async def analyze_batch(payload: dict):
-    if not ai_client:
-        return {"error": "AI module not configured (Check GOOGLE_API_KEY)"}
-    
-    batch_id = payload.get("batch_id")
-    origin = payload.get("origin", "UNKNOWN")
-    destination = payload.get("destination", "UNKNOWN")
-    
-    # Filter results for this batch (or general if no batch_id)
-    relevant_prices = []
-    if batch_id:
-        # Find results matching this batch_id
-        # Note: ScraperResult object needs to have batch_id attribute
-        relevant_results = [r for r in db_results if getattr(r, 'batch_id', None) == batch_id]
-        if not relevant_results:
-             return {"report": "No data found for this batch to analyze."}
-        
-        # Flatten prices from all tasks in batch
-        for r in relevant_results:
-             for p in r.prices:
-                 relevant_prices.append({
-                     "date": p.date,
-                     "price": p.price,
-                     "airline": "MU" # Placeholder, real extraction might need airline parsing
-                 })
-    else:
-        # Fallback: Analyze last 100 prices globally
-        for r in db_results[-5:]:
-             for p in r.prices:
-                 relevant_prices.append({"date": p.date, "price": p.price})
-    
-    if not relevant_prices:
-        return {"report": "No extracted price data available to analyze."}
-
-    # Call LLM
-    report = ai_client.analyze_price_trend(origin, destination, relevant_prices)
-    return {"report": report}
-
-@app.post("/ai/compare_files")
-async def analyze_comparison_files(files: List[UploadFile] = File(...)):
-    if not ai_client:
-        raise HTTPException(status_code=503, detail="AI Client not initialized (Check configuration)")
-    
-    comparison_data = {}
-    import pandas as pd
-    import io
-    
-    for file in files:
-        try:
-            content = await file.read()
-            # Try parsing with generic pandas
-            try:
-                df = pd.read_csv(io.BytesIO(content))
-            except:
-                # Fallback utf-16 if default fails
-                df = pd.read_csv(io.BytesIO(content), encoding='utf-16', sep='\t')
-            
-            # Simple heuristic to find price/date columns
-            # Look for columns containing 'date' and 'price' (case insensitive)
-            cols = {c.lower(): c for c in df.columns}
-            date_col = next((cols[c] for c in cols if 'date' in c or 'day' in c), None)
-            price_col = next((cols[c] for c in cols if 'price' in c or 'fare' in c or 'amount' in c), None)
-            
-            if date_col and price_col:
-                # Convert to simple list of dicts
-                file_data = []
-                for _, row in df.iterrows():
-                    file_data.append({
-                        "date": str(row[date_col]),
-                        "price": str(row[price_col])
-                    })
-                comparison_data[file.filename] = file_data
-            else:
-                # Fallback: assume first column is date, second is price
-                if len(df.columns) >= 2:
-                     file_data = [{"date": str(row[0]), "price": str(row[1])} for i, row in df.iterrows()]
-                     comparison_data[file.filename] = file_data
-                
-        except Exception as e:
-            print(f"Failed to parse {file.filename}: {e}")
-            continue
-
-    if not comparison_data:
-         raise HTTPException(status_code=400, detail="Could not extract date/price data from uploaded files.")
-
-    report = ai_client.compare_airlines(comparison_data)
-    return {"report": report}
-
-@app.post("/ai/compare_batches")
-async def compare_batches_endpoint(request: BatchComparisonRequest):
-    if not ai_client:
-         raise HTTPException(status_code=503, detail="AI Client not initialized")
-    
-    comparison_data = {}
-    
-    for batch_id in request.batch_ids:
-        # Filter results for this batch
-        batch_results = [r for r in db_results if getattr(r, 'batch_id', None) == str(batch_id)]
-        
-        if not batch_results:
-            continue
-            
-        all_prices = []
-        for res in batch_results:
-            if res.prices:
-                 all_prices.extend([p.dict() for p in res.prices])
-        
-        if all_prices:
-            # Name source with ID and Route if available
-            label = f"Batch {batch_id}"
-            if batch_results and batch_results[0].task:
-                 label += f" ({batch_results[0].task.origin}->{batch_results[0].task.destination})"
-            comparison_data[label] = all_prices
-
-    if not comparison_data:
-        raise HTTPException(status_code=400, detail="No price data found for selected batches")
-
-    report = ai_client.compare_airlines(comparison_data, user_prompt=request.user_prompt)
-    return {"report": report}
-
 @app.get("/results", response_model=List[ScraperResult])
 async def get_results():
-    # Return results sorted by timestamp descending
+    # 返回按时间倒序排列的结果
     return sorted(db_results, key=lambda x: x.timestamp, reverse=True)
 
 @app.get("/logs", response_model=List[LogEntry])
@@ -351,36 +154,6 @@ async def export_csv():
         headers={"Content-Disposition": f"attachment; filename=apas_report_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"}
     )
 
-@app.get("/export/csv/{batch_id}")
-async def export_batch_csv(batch_id: str):
-    # Filter results by batch_id
-    batch_results = [r for r in db_results if getattr(r, 'batch_id', None) == batch_id]
-    
-    if not batch_results:
-        return {"error": "No data available for this batch"}
-    
-    from .processor import DataProcessor
-    import tempfile
-    
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp:
-        output_path = tmp.name
-        
-    DataProcessor.prices_to_csv(batch_results, output_path)
-    
-    def iter_file():
-        with open(output_path, 'rb') as f:
-            yield from f
-        try:
-            os.remove(output_path)
-        except:
-            pass
-
-    return StreamingResponse(
-        iter_file(),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=apas_batch_{batch_id}.csv"}
-    )
-
 async def run_batch_process(tasks: List[ScraperTask], batch_id: str):
     def add_batch_log(msg, level="INFO"):
         db_logs.append(LogEntry(
@@ -397,7 +170,6 @@ async def run_batch_process(tasks: List[ScraperTask], batch_id: str):
     # Update batch status to processing
     if batch_id in db_batches:
         db_batches[batch_id]["status"] = "processing"
-        save_db_to_disk()
 
     for i, task in enumerate(tasks):
         task_idx = i # correl with db_batches tasks list index
@@ -428,13 +200,11 @@ async def run_batch_process(tasks: List[ScraperTask], batch_id: str):
 
                 # Intermediate save: Save current results to a dedicated batch CSV
                 save_intermediate_batch(batch_id, batch_results)
-                save_db_to_disk() # Save successful result and status update
             else:
                 add_batch_log(f"Task {i+1} failed: {result.message}", "WARNING")
                 if batch_id in db_batches:
                     db_batches[batch_id]["tasks"][task_idx]["status"] = "failed"
                     db_batches[batch_id]["tasks"][task_idx]["message"] = result.message
-                save_db_to_disk() # Save failure status
 
         except Exception as e:
             add_batch_log(f"Task {i+1} system crash: {str(e)}", "ERROR")
@@ -446,7 +216,6 @@ async def run_batch_process(tasks: List[ScraperTask], batch_id: str):
     
     if batch_id in db_batches:
         db_batches[batch_id]["status"] = "completed"
-        save_db_to_disk() # Final save
         
     add_batch_log(f"Batch {batch_id} fully completed. Final count: {len(batch_results)} success rows.", "SUCCESS")
 
@@ -456,7 +225,7 @@ def save_intermediate_batch(batch_id, results):
     path = f"data/results/batches/batch_{batch_id}_live.csv"
     DataProcessor.prices_to_csv(results, path)
 
-async def run_scrape_process(task: ScraperTask, batch_id: str = None):
+async def run_scrape_process(task: ScraperTask):
 # ... existing code ...
     max_retries = 3
     retry_count = 0
@@ -465,14 +234,8 @@ async def run_scrape_process(task: ScraperTask, batch_id: str = None):
         db_logs.append(LogEntry(
             timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             level=level,
-            message=msg,
-            batch_id=batch_id
+            message=msg
         ))
-
-    # Update batch status to running
-    if batch_id and batch_id in db_batches:
-        db_batches[batch_id]["tasks"][0]["status"] = "running"
-        save_db_to_disk()
 
     while retry_count < max_retries:
         engine = ITAEngine(headless=False)
@@ -484,38 +247,22 @@ async def run_scrape_process(task: ScraperTask, batch_id: str = None):
             
             if result.status == "success":
                 add_log(f"Successfully extracted {len(result.prices)} price points.", "SUCCESS")
-                if batch_id:
-                    result.batch_id = batch_id
-                    
                 db_results.append(result)
                 add_log("Task completed successfully.", "SUCCESS")
-
-                # Update batch status to success
-                if batch_id and batch_id in db_batches:
-                    db_batches[batch_id]["status"] = "completed"
-                    db_batches[batch_id]["tasks"][0]["status"] = "success"
-                    db_batches[batch_id]["tasks"][0]["result_count"] = len(result.prices)
-                    db_batches[batch_id]["tasks"][0]["message"] = "Completed"
-                    
-                save_db_to_disk()
-                return 
+                return # 成功后退出循环
             else:
                 retry_count += 1
                 add_log(f"Attempt {retry_count} produced an issue: {result.message}. Retrying soon...", "WARNING")
-                await asyncio.sleep(5) 
+                await asyncio.sleep(5) # 重试前稍作等待
                 
         except Exception as e:
             retry_count += 1
             add_log(f"Attempt {retry_count} system error: {str(e)}. Retrying...", "WARNING")
             await asyncio.sleep(5)
 
-    # If all retries fail
-    add_log(f"ALL {max_retries} attempts failed.", "ERROR")
-    if batch_id and batch_id in db_batches:
-        db_batches[batch_id]["status"] = "failed"
-        db_batches[batch_id]["tasks"][0]["status"] = "failed"
-        db_batches[batch_id]["tasks"][0]["message"] = "Max retries exceeded"
-    save_db_to_disk()
+    # 如果所有重试都失败
+    add_log(f"ALL {max_retries} attempts failed. Scraper has safely timed out to prevent system hang.", "ERROR")
+    add_log("SYSTEM NOTIFICATION: Automatic price monitoring will continue in the next scheduled cycle. No manual action required.", "INFO")
 
 # Serve static files (React frontend)
 # 获取 frontend/dist 的绝对路径
