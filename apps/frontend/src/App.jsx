@@ -45,6 +45,8 @@ export default function App() {
   const [comparisonMode, setComparisonMode] = useState('upload'); // 'upload' | 'select'
   const [selectedBatchIds, setSelectedBatchIds] = useState([]);
   const [customPrompt, setCustomPrompt] = useState('');
+  const [aiModels, setAiModels] = useState([]);
+  const [selectedModel, setSelectedModel] = useState(null);
 
   // 轮询日志和结果
   useEffect(() => {
@@ -69,6 +71,20 @@ export default function App() {
       }
     }, 3000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Fetch AI Models
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        const models = await scraperService.getAiModels();
+        setAiModels(models);
+        if (models.length > 0) setSelectedModel(models[0]);
+      } catch (err) {
+        console.error("Failed to fetch AI models:", err);
+      }
+    };
+    fetchModels();
   }, []);
 
   const handleLaunchTask = async (taskData) => {
@@ -118,8 +134,8 @@ export default function App() {
       // Use most recent batch if available, otherwise global
       const recentBatch = batches.length > 0 ? batches[0] : null;
       const payload = recentBatch
-        ? { batch_id: recentBatch.id, origin: "BATCH", destination: "ANALYSIS" }
-        : { origin: "GLOBAL", destination: "MARKET" };
+        ? { batch_id: recentBatch.id, origin: "BATCH", destination: "ANALYSIS", ai_model_config: selectedModel }
+        : { origin: "GLOBAL", destination: "MARKET", ai_model_config: selectedModel };
 
       const res = await scraperService.generateAIReport(payload);
       setAiReport(res.report);
@@ -139,7 +155,7 @@ export default function App() {
 
     setIsComparing(true);
     try {
-      const data = await scraperService.uploadComparisonFiles(files, customPrompt);
+      const data = await scraperService.uploadComparisonFiles(files, customPrompt, selectedModel);
       setComparisonReport(data.report);
     } catch (error) {
       console.error("Comparison failed:", error);
@@ -156,7 +172,7 @@ export default function App() {
     }
     setIsComparing(true);
     try {
-      const data = await scraperService.compareBatches(selectedBatchIds, customPrompt);
+      const data = await scraperService.compareBatches(selectedBatchIds, customPrompt, selectedModel);
       setComparisonReport(data.report);
     } catch (error) {
       console.error("Batch comparison failed:", error);
@@ -314,12 +330,30 @@ export default function App() {
                 </p>
 
                 <div className="bg-white/10 rounded-xl p-4 mb-6 backdrop-blur-sm">
-                  <p className="text-xs text-indigo-300 uppercase tracking-widest font-bold mb-2">Data Source</p>
-                  <div className="flex items-center gap-3">
-                    <Database size={16} className="text-indigo-400" />
-                    <span className="font-mono text-sm font-bold">
-                      {batches.length > 0 ? `Batch #${batches[0].id} (${batches[0].total_tasks} tasks)` : 'Global Data History'}
-                    </span>
+                  <p className="text-xs text-indigo-300 uppercase tracking-widest font-bold mb-2">AI Model Setup</p>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <Database size={16} className="text-indigo-400" />
+                      <span className="font-mono text-sm font-bold">
+                        {batches.length > 0 ? `Batch #${batches[0].id}` : 'Global History'}
+                      </span>
+                    </div>
+
+                    <div className="pt-2">
+                      <select
+                        className="w-full bg-indigo-800/50 border border-indigo-400/30 rounded-lg p-2 text-xs font-bold outline-none text-white appearance-none cursor-pointer"
+                        value={selectedModel ? `${selectedModel.provider}:${selectedModel.name}` : ''}
+                        onChange={(e) => {
+                          const [provider, name] = e.target.value.split(':');
+                          setSelectedModel(aiModels.find(m => m.provider === provider && m.name === name));
+                        }}
+                      >
+                        {aiModels.map((m, i) => (
+                          <option key={i} value={`${m.provider}:${m.name}`}>{m.label}</option>
+                        ))}
+                        {aiModels.length === 0 && <option value="">No Models Available</option>}
+                      </select>
+                    </div>
                   </div>
                 </div>
 

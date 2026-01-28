@@ -37,13 +37,18 @@ export const scraperService = {
         return response.data;
     },
 
+    async getAiModels() {
+        const response = await axios.get(`${API_BASE}/ai/models`);
+        return response.data;
+    },
+
     async generateAIReport(params) {
-        // params: { batch_id: "...", origin: "SHA", destination: "YVR" }
+        // params: { batch_id: "...", origin: "SHA", destination: "YVR", model_config: {...} }
         const response = await axios.post(`${API_BASE}/ai/analyze`, params);
         return response.data;
     },
 
-    async uploadComparisonFiles(files, userPrompt = null) {
+    async uploadComparisonFiles(files, userPrompt = null, modelConfig = null) {
         const formData = new FormData();
         Array.from(files).forEach(file => {
             formData.append("files", file);
@@ -51,16 +56,20 @@ export const scraperService = {
         if (userPrompt) {
             formData.append("user_prompt", userPrompt);
         }
+        if (modelConfig) {
+            formData.append("ai_model_config_json", JSON.stringify(modelConfig));
+        }
         const response = await axios.post(`${API_BASE}/ai/compare_files`, formData, {
             headers: { 'Content-Type': 'multipart/form-data' }
         });
         return response.data;
     },
 
-    async compareBatches(batchIds, userPrompt = null) {
+    async compareBatches(batchIds, userPrompt = null, modelConfig = null) {
         const response = await axios.post(`${API_BASE}/ai/compare_batches`, {
             batch_ids: batchIds,
-            user_prompt: userPrompt
+            user_prompt: userPrompt,
+            ai_model_config: modelConfig
         });
         return response.data;
     },

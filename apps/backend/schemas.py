@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import date
 
 class FlightPrice(BaseModel):
@@ -44,3 +44,4 @@ class LogEntry(BaseModel):
 class BatchComparisonRequest(BaseModel):
     batch_ids: List[str]
     user_prompt: Optional[str] = None
+    ai_model_config: Optional[Dict] = None # {"provider": "groq", "name": "..."}
