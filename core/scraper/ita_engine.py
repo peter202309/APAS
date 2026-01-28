@@ -1,16 +1,25 @@
 import asyncio
 import logging
-from playwright.async_api import async_playwright
-from playwright_stealth import Stealth
+try:
+    from playwright.async_api import async_playwright
+    from playwright_stealth import Stealth
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    PLAYWRIGHT_AVAILABLE = False
+    async_playwright = None
+    Stealth = None
+
 from typing import List, Dict
 from apps.backend.schemas import ScraperTask, FlightPrice, ScraperResult
-from datetime import datetime
 from datetime import datetime
 from .proxy_manager import proxy_manager
 from .utils import human_sleep
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+if not PLAYWRIGHT_AVAILABLE:
+    logger.warning("Playwright not installed. Scraping features will be disabled.")
 
 class ITAEngine:
     def __init__(self, headless: bool = True):
